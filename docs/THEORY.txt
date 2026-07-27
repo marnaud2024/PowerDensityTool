@@ -1,299 +1,262 @@
-================================================================================
- POWER DENSITY TOOL - TEORIA COMPLETA POR TRAS DA INTERFACE
- GPEC / UFC - SOBRAEP
-================================================================================
+Power Density Tool - a teoria por tras da interface
+GPEC / UFC
+===================================================
 
-Este documento descreve, em detalhe e de forma completa, toda a teoria de
-eletronica de potencia implementada na ferramenta. O objetivo da ferramenta e
-estimar a DENSIDADE DE POTENCIA (W/L) e o RENDIMENTO (%) de um conversor
-CC-CC isolado, varrendo combinacoes de:
+A ideia deste documento e reunir, num lugar so, toda a eletronica de potencia que
+esta implementada na ferramenta. Ela estima a densidade de potencia (W/L) e o
+rendimento (%) de um conversor CC-CC isolado, testando combinacoes de:
 
-   - MOSFETs SiC (duas posicoes: MOSFET-I e MOSFET-II)
-   - Diodos SiC Schottky
-   - Indutores (nucleos de po - Magnetics e Magmattec)
-   - Transformadores (ferrites Magnetics / TDK e nucleos Magmattec)
-   - Dissipadores de calor (suporte termico dos semicondutores)
+   - MOSFETs de SiC (em duas posicoes, MOSFET-I e MOSFET-II)
+   - diodos SiC Schottky
+   - indutores com nucleo de po (Magnetics e Magmattec)
+   - transformadores (ferrites Magnetics e TDK, nucleos Magmattec)
+   - dissipadores, que dao o suporte termico dos semicondutores
 
-A logica de calculo herda do projeto original (app2.mlapp + DIODESapp.m +
-MOSFETs*.m + GraficoRendimento.m + Esbocoprografico.m) e foi auditada,
-corrigida e reescrita em funcoes reutilizaveis no pacote +pdpwr.
+O calculo veio do projeto original (o app2.mlapp mais os scripts DIODESapp.m,
+MOSFETs*.m, GraficoRendimento.m e Esbocoprografico.m). A gente auditou tudo,
+corrigiu o que estava errado e reescreveu em funcoes reaproveitaveis dentro do
+pacote +pdpwr.
 
-Convenções de unidade usadas no texto:
-   V [volt], A [ampere], W [watt], J [joule], Hz/kHz [frequencia],
-   T [tesla], G [gauss = 1e-4 T], Oe [oersted], cm/mm [comprimento],
-   cm^2/mm^2 [area], cm^3/mm^3 [volume], degC [temperatura],
-   ohm [resistencia], H [henry], nH/esp^2 [indutancia por espira ao quadrado].
+Um lembrete de unidades, para o texto nao ficar ambiguo: V (volt), A (ampere),
+W (watt), J (joule), Hz e kHz (frequencia), T (tesla), G (gauss, 1 G = 1e-4 T),
+Oe (oersted), cm e mm (comprimento), cm^2 e mm^2 (area), cm^3 e mm^3 (volume),
+degC (temperatura), ohm (resistencia), H (henry) e nH/esp^2 (indutancia por espira
+ao quadrado).
 
-================================================================================
- 1. CONCEITO DE DENSIDADE DE POTENCIA
-================================================================================
 
-A densidade de potencia mede quanta potencia o conversor processa por unidade
-de volume. Quanto maior, mais compacto o conversor. Duas metricas convivem na
-ferramenta (aba Power Density):
+1. O que e densidade de potencia
+--------------------------------
+Densidade de potencia e quanta potencia o conversor processa por unidade de volume:
+quanto maior, mais compacto ele e. Na aba Power Density convivem duas metricas.
 
-   (a) DENSIDADE DE POTENCIA (recomendada, "P_out / Vol"):
-          rho = P_out / Volume_total           [W/L]
-       onde P_out e a potencia de saida (util) e Volume_total e a soma dos
-       volumes de todos os componentes do conversor. Quanto MAIOR, melhor.
+A primeira, que a gente recomenda, e a densidade de potencia propriamente dita
+("P_out / Vol"):
 
-   (b) DENSIDADE DE PERDAS (legado, "Loss / Vol"):
-          rho_loss = P_loss_total / Volume_total   [W/L]
-       Era a metrica que o app original plotava (em Esbocoprografico.m a
-       variavel "PowerDensity" era na verdade PerdasTotais/Volume). Quanto
-       MENOR, melhor. E util porque NAO depende da potencia de entrada.
+   rho = P_out / Volume_total           [W/L]
 
-O RENDIMENTO (eficiencia) e (mesma formula da aba power-density do app2 original):
+com P_out sendo a potencia util de saida e Volume_total a soma dos volumes de todos
+os componentes. Aqui, quanto maior, melhor.
 
-          eta = (P_out - P_loss_total) / P_out * 100   [%]
+A segunda e a densidade de perdas ("Loss / Vol"), que ficou de heranca:
 
-(aqui P_out e tratado como a potencia de referencia/entrada). O rendimento
-DEPENDE da potencia (P_out): para as mesmas perdas, um conversor de maior
-potencia tem rendimento mais alto. Por isso a ferramenta separa as duas
-analises:
+   rho_loss = P_loss_total / Volume_total   [W/L]
 
-   - Analise de RENDIMENTO  -> usa P_out (depende da potencia de entrada)
-   - Analise de PERDAS      -> independe da potencia, compara perdas absolutas
+Era o que o app antigo desenhava - no Esbocoprografico.m a variavel chamada
+"PowerDensity" era, na verdade, PerdasTotais/Volume. Nessa, quanto menor, melhor. A
+vantagem e que ela nao depende da potencia de entrada.
 
-O ponto otimo:
-   - Na vista "P_out / Vol": canto SUPERIOR-DIREITO (alto rendimento, alta
-     densidade).
-   - Na vista "Loss / Vol": canto INFERIOR-ESQUERDO, perto da origem (baixa
-     perda, baixo volume). Nas abas individuais (MOSFET/Diodo/Indutor/Trafo)
-     o eixo e sempre Volume (x) x Perdas (y), logo o melhor ponto e o mais
-     proximo da ORIGEM.
+O rendimento usa a mesma formula da aba power-density do app2 original:
 
-================================================================================
- 2. PERDAS NO MOSFET SiC  (pdpwr.loss.mosfet)
-================================================================================
+   eta = (P_out - P_loss_total) / P_out * 100   [%]
 
-O MOSFET tem tres parcelas de perda: conducao, comutacao em entrada (turn-on)
-e comutacao em saida (turn-off).
+(tratando P_out como a potencia de referencia). Repare que o rendimento depende de
+P_out: para as mesmas perdas, um conversor de potencia maior tem rendimento maior. E
+por isso que a ferramenta separa duas analises - a de rendimento, que usa P_out, e a
+de perdas, que independe da potencia e compara as perdas absolutas.
 
-2.1 ENERGIAS DE COMUTACAO (Eon, Eoff)
--------------------------------------
-Vem de modelos termicos PLECS (arquivos XML) extraidos dos datasheets dos
-fabricantes (Wolfspeed e GeneSiC). Cada XML descreve a energia de comutacao
-como funcao de:
-   - corrente comutada I [A]
-   - tensao de bloqueio Vds [V]
-   - temperatura de juncao Tj [degC]
-   - resistor de gate Rg [ohm]
+Onde fica o melhor ponto depende da vista. Em "P_out / Vol", e o canto superior
+direito (rendimento e densidade altos). Em "Loss / Vol", e o canto inferior esquerdo,
+perto da origem (pouca perda, pouco volume). Nas abas de componente individual
+(MOSFET, diodo, indutor, trafo) o eixo e sempre volume no X e perdas no Y, entao o
+melhor projeto e sempre o mais proximo da origem.
+
+
+2. Perdas no MOSFET SiC  (pdpwr.loss.mosfet)
+--------------------------------------------
+O MOSFET perde energia de tres formas: conducao, comutacao ao ligar (turn-on) e
+comutacao ao desligar (turn-off).
+
+As energias de comutacao (Eon e Eoff) saem dos modelos termicos PLECS - arquivos XML
+que os fabricantes (Wolfspeed e GeneSiC) extraem dos datasheets. Cada XML descreve a
+energia em funcao da corrente comutada I, da tensao de bloqueio Vds, da temperatura
+de juncao Tj e do resistor de gate Rg:
 
    Eon  = f_Eon (I_on,  Vds, Tj, Rg)     [J]
    Eoff = f_Eoff(I_off, Vds, Tj, Rg)     [J]
 
-Wolfspeed e GeneSiC usam formatos PLECS diferentes:
-   - GeneSiC: tabelas customizadas (CustomTables) interpoladas diretamente.
-   - Wolfspeed: formula com termos de energia base + correcao por Rgon/Rgoff
-     (a energia escala com a razao de resistores de gate de ligar/desligar).
+Os dois fabricantes guardam isso de jeitos diferentes. A GeneSiC usa tabelas
+customizadas, que a gente interpola direto. A Wolfspeed usa uma formula com termos de
+energia base mais uma correcao pelos resistores de gate de ligar e desligar (a energia
+escala com a razao entre eles).
 
-2.2 POTENCIA DE COMUTACAO
--------------------------
-   P_on  = fs * Eon       [W]   (zerada se Soft-Switching / ZVS estiver ativo)
+A potencia de comutacao e a energia por evento vezes a frequencia:
+
+   P_on  = fs * Eon       [W]   (vai a zero se o modo Soft-Switching / ZVS estiver ligado)
    P_off = fs * Eoff      [W]
 
-onde fs e a frequencia de comutacao [Hz]. O modo ZVS (Zero-Voltage Switching)
-cancela P_on porque a comutacao em entrada ocorre com tensao nula.
+O ZVS (Zero-Voltage Switching) zera P_on porque a comutacao de entrada acontece com
+tensao nula.
 
-2.3 PERDA DE CONDUCAO
----------------------
-O canal de um MOSFET SiC e essencialmente resistivo no estado ligado. A
-resistencia equivalente Rds_on e estimada pela media de Vdrop/I avaliada nos
-instantes de corrente de ligar e desligar:
+Na conducao, o canal de um MOSFET SiC e basicamente resistivo quando ligado. A gente
+estima a resistencia equivalente Rds_on pela media de Vdrop/I nos instantes de ligar e
+desligar:
 
    Rds_on = 0.5 * [ Vdrop(I_on,  Vgs_on, Tj)/I_on +
                     Vdrop(I_off, Vgs_on, Tj)/I_off ]   [ohm]
 
    P_cond = Rds_on * I_RMS^2     [W]
 
-(esta forma e mantida identica ao codigo legado para reprodutibilidade).
+(essa forma foi mantida igual a do codigo legado, de proposito, para os resultados
+baterem.) A perda total do dispositivo e a soma das tres:
 
-2.4 PERDA TOTAL
----------------
    P_total = P_on + P_off + P_cond     [W]
 
-================================================================================
- 3. PERDAS NO DIODO SiC SCHOTTKY  (pdpwr.loss.diode)
-================================================================================
 
-Diodos SiC Schottky NAO tem perda de recuperacao reversa significativa (Qrr ~ 0),
-portanto so se considera a perda de CONDUCAO.
+3. Perdas no diodo SiC Schottky  (pdpwr.loss.diode)
+---------------------------------------------------
+Diodo SiC Schottky praticamente nao tem recuperacao reversa (Qrr ~ 0), entao aqui so
+entra a perda de conducao.
 
-A queda do diodo e modelada por uma tensao de limiar V_TO em serie com uma
-resistencia dinamica R_d, ambas funcoes quadraticas da temperatura de juncao:
+A queda direta e modelada por uma tensao de limiar V_TO em serie com uma resistencia
+dinamica R_d. As duas variam com a temperatura de juncao de forma quadratica:
 
    R_d (Tj) = Rd_a * Tj^2 + Rd_b * Tj + Rd_c        [ohm]
    V_TO(Tj) = Vto_a * Tj^2 + Vto_b * Tj + Vto_c     [V]
 
-(Para diodos GeneSiC, Vto_a = 0 - parametrizacao linear; a forma quadratica
-cobre ambos os fabricantes.)
-
-Perda de conducao (modelo classico de Graovac/Infineon):
+Nos diodos GeneSiC, Vto_a = 0 (a parametrizacao vira linear); a forma quadratica cobre
+os dois fabricantes de uma vez. A perda de conducao segue o modelo classico de
+Graovac/Infineon:
 
    P_cond = R_d * I_RMS^2 + V_TO * I_avg     [W]
 
-Se o componente e um "Per Leg" (encapsulamento com 2 dies meia-ponte), a
-corrente se divide pelos dois dies:
+Se o encapsulamento e "Per Leg" (dois dies em meia-ponte), a corrente se divide entre
+eles:
 
    P_cond = 2 * [ R_d * (I_RMS/2)^2 + V_TO * (I_avg/2) ]
 
-   P_total = P_cond   (sem recuperacao reversa)
+E como nao ha comutacao a considerar, P_total = P_cond.
 
-================================================================================
- 4. DIMENSIONAMENTO DO DISSIPADOR  (pdpwr.design.heatsink)
-================================================================================
 
-O dissipador e dimensionado para que a juncao dos semicondutores se mantenha
-abaixo do limite, dada a perda dissipada. O modelo segue EXATAMENTE o projeto
-original (DIODESapp.m / MOSFETsWolfspeed50kWapp.m) e a cadeia termica padrao.
+4. Dimensionamento do dissipador  (pdpwr.design.heatsink)
+---------------------------------------------------------
+O dissipador e escolhido para manter a juncao dos semicondutores abaixo do limite,
+dada a perda que precisa escoar. O modelo segue exatamente o projeto original
+(DIODESapp.m / MOSFETsWolfspeed50kWapp.m).
 
-4.1 CADEIA TERMICA
-------------------
-Resistencias em serie da juncao ate o ambiente:
-   - R_jc  : juncao -> encapsulamento (junction-to-case), default 1.0 degC/W
-   - R_chs : encapsulamento -> dissipador (case-to-heatsink), default 0.5 degC/W
-   - R_ha  : dissipador -> ambiente (heatsink-to-ambient), do catalogo
-
-Temperatura maxima do dissipador admissivel pelo lado do dispositivo:
+A cadeia termica sao tres resistencias em serie, da juncao ate o ambiente: R_jc
+(juncao para o encapsulamento, 1.0 degC/W por padrao), R_chs (encapsulamento para o
+dissipador, 0.5 degC/W por padrao) e R_ha (dissipador para o ambiente, que vem do
+catalogo). A temperatura maxima do dissipador que o dispositivo tolera e:
 
    T_HS_device = Tj - P_loss * (R_chs + R_jc)    [degC]
 
-4.2 RESISTENCIA TERMICA NECESSARIA
-----------------------------------
-Q dispositivos podem compartilhar UM dissipador (parametro "Devices per HS").
-A potencia total no dissipador e Q * P_loss. A elevacao admissivel e
-deltaT_allowed = T_HS_max - T_amb.
+Um dissipador pode carregar Q dispositivos (o parametro "Devices per HS"), entao a
+potencia total nele e Q * P_loss e a elevacao admissivel e deltaT_allowed =
+T_HS_max - T_amb. Dai saem dois casos, e a gente pega o mais restritivo:
 
-   Se (T_HS_device - T_amb) > deltaT_allowed:   (limitado pela temp do HS)
+   Se (T_HS_device - T_amb) > deltaT_allowed:   (manda a temperatura do dissipador)
        R_required = deltaT_allowed / (Q * P_loss)
        elevTemp   = deltaT_allowed - 0.1
-   Senao:                                        (limitado pela juncao)
+   Senao:                                        (manda a juncao)
        R_required = (T_HS_device - T_amb) / (Q * P_loss)
        elevTemp   = R_required * (Q * P_loss)
 
-Rejeita o caso se elevTemp <= 0 ou elevTemp > deltaT_allowed.
+O caso e descartado se elevTemp <= 0 ou elevTemp > deltaT_allowed.
 
-4.3 COMPRIMENTO DO PERFIL (fit empirico HSDissipadores)
--------------------------------------------------------
-Para cada perfil de dissipador do catalogo (que tem R_ha de catalogo por
-unidade de comprimento, natural ou forcado), calcula-se o coeficiente:
-
-   coef = R_required / R_ha
-
-e o comprimento necessario pela curva ajustada do catalogo HSDissipadores
-(equacao identica ao original):
+Cada perfil do catalogo tem seu R_ha (por unidade de comprimento, em conveccao natural
+ou forcada). Com o coeficiente coef = R_required / R_ha, o comprimento necessario sai
+da curva ajustada do catalogo HSDissipadores - a mesma equacao empirica do original:
 
    L = 64.1030 / (coef - 0.4258) + 14.754     [mm]
 
-Rejeita se L < L_min ou L > L_max (limites do usuario).
+que e rejeitada se cair fora dos limites L_min e L_max do usuario. O volume e o produto
+das tres dimensoes:
 
-4.4 VOLUME DO DISSIPADOR
-------------------------
    Vol = (L/10) * (H/10) * (W/10)     [cm^3]
 
-onde H e W sao altura e largura do perfil (mm). E ESTE volume que entra no
-calculo de densidade - o volume do semicondutor em si e desprezivel frente ao
-do dissipador, por isso o eixo dos graficos de MOSFET/Diodo e o VOLUME DO
-DISSIPADOR.
+com H e W a altura e a largura do perfil (mm). E esse volume que entra na conta de
+densidade: o volume do semicondutor em si e desprezivel perto do dissipador, e por isso
+que o eixo dos graficos de MOSFET e diodo e o volume do dissipador.
 
-4.5 CONVECCAO NATURAL vs FORCADA
---------------------------------
-Cada perfil tem R_ha para conveccao natural e para conveccao forcada (com
-velocidade de ar de referencia, ~5 m/s, registrada na coluna Convection_Notes).
-A ferramenta gera ambas as opcoes; o usuario filtra por arvore (tree).
+Uma observacao sobre conveccao: cada perfil traz um R_ha para conveccao natural e outro
+para forcada (com uma velocidade de ar de referencia, em torno de 5 m/s, anotada na
+coluna Convection_Notes). A ferramenta gera as duas opcoes e voce escolhe qual quer na
+arvore de filtros.
 
-================================================================================
- 5. PROJETO DO INDUTOR  (pdpwr.design.inductor)
-================================================================================
 
-Indutor de filtro toroidal, com nucleo de po (Magnetics ou Magmattec). O fluxo
-de calculo e iterativo porque a permeabilidade cai com a polarizacao DC
-(roll-off), o que muda o numero de espiras.
+5. Projeto do indutor  (pdpwr.design.inductor)
+----------------------------------------------
+Aqui e um indutor de filtro toroidal, com nucleo de po (Magnetics ou Magmattec). O
+calculo precisa iterar porque a permeabilidade cai com a polarizacao DC (o chamado
+roll-off), e isso muda o numero de espiras.
 
-5.1 INDUTANCIA REQUERIDA E CORRENTES
-------------------------------------
-Calculadas pelo chamador (tab_inductor) a partir das condicoes de operacao:
+A indutancia necessaria e as correntes vem da aba (tab_inductor), a partir das
+condicoes de operacao:
 
    L     = Vd / (4 * fs * DeltaIL)                       [H]
    ILef  = ILmed * sqrt(1 + (DeltaIL/ILmed)^2 / 12)      [A]  (RMS com ripple)
 
-onde Vd e a TENSAO SOBRE O INDUTOR (nao o barramento - tipicamente dezenas a
-centenas de V), fs a frequencia, DeltaIL o ripple pico-a-pico, ILmed a corrente
-media.
+Atencao ao Vd: e a tensao SOBRE O INDUTOR, nao o barramento - costuma ser de dezenas a
+centenas de volts. DeltaIL e o ripple pico-a-pico e ILmed a corrente media.
 
-5.2 NUMERO DE ESPIRAS COM ROLL-OFF DE PERMEABILIDADE
-----------------------------------------------------
-Indutancia por espira ao quadrado (a partir da permeabilidade inicial):
+Para as espiras, a gente parte da indutancia por espira ao quadrado:
 
    AL0 = mu_rel * mu0 * (Ae / le) * 1e-3     [H/esp^2]
    (mu0 = 4*pi*1e-7; Ae em mm^2; le em mm)
 
-Para Magmattec usa-se o AL0 de catalogo diretamente (AL0_nHesp2 * 1e-9).
+No Magmattec usa-se o AL0 direto do catalogo (AL0_nHesp2 * 1e-9). Dai o loop converge o
+N:
 
-Itera ate convergir N:
    N1   = ceil(sqrt(L / AL))
    Hmed = 4*pi * (N1/le) * ILmed          [Oe]  (campo magnetico medio)
-   mu%  = roll-off(Hmed)                  (percentual de permeabilidade restante)
+   mu%  = roll-off(Hmed)                  (quanto da permeabilidade ainda resta)
    AL   = AL0 * mu% / 100
    N    = ceil(sqrt(L / AL))
-   repete ate N estabilizar (max 25 iteracoes)
+   e repete ate N parar de mudar (no maximo 25 vezes)
 
-Se mu% < 30 em qualquer iteracao -> nucleo saturou, REJEITA ('mu_rolloff<30')
-imediatamente (evita AL->0 e N->infinito).
+Se em qualquer passo mu% cai abaixo de 30, o nucleo saturou: a gente rejeita na hora
+('mu_rolloff<30'), o que evita AL tender a zero e N estourar. Os modelos de roll-off
+(permeabilidade restante, em %, contra H em Oe) sao:
 
-Modelos de roll-off (percentual de permeabilidade vs H em Oe):
    - Magnetics:  mu% = 1 / (a + b * H^c) * 100
-                 (a, b, c por material E permeabilidade - aba Magnetics_CurveFit)
-   - Magmattec:  ajuste cubico do legado
+                 (a, b, c por material E por permeabilidade - aba Magnetics_CurveFit)
+   - Magmattec:  o ajuste cubico do legado,
                  mu% = 2.6e-7*H^3 - 1.9352e-4*H^2 + 0.01696643*H + 99.67957942
-   Ambos clampeados a [0, 100] (um nucleo nunca EXCEDE sua permeabilidade
-   nominal, so cai abaixo dela).
 
-5.3 JANELA E FATOR DE UTILIZACAO (Ku)
--------------------------------------
+Os dois ficam presos ao intervalo [0, 100] - um nucleo nunca supera a propria
+permeabilidade nominal, so cai abaixo dela.
+
+A janela e o fator de utilizacao Ku saem de:
+
    Acu     = ILef / J                              [cm^2]  (cobre necessario)
    Nparal  = ceil(Acu / Aawg)                      (fios em paralelo)
    Aocup   = (Dext_awg/2)^2 * pi * N * Nparal       [cm^2]  (area ocupada)
    Aw      = (ID/2)^2 * pi                          [mm^2]  (area da janela)
-   Ku      = Aocup / (Aw * 0.01)                    (mm^2 -> cm^2)
+   Ku      = Aocup / (Aw * 0.01)                    (converte mm^2 -> cm^2)
 
-Rejeita se Ku > kumax ou Ku < kumin.
+com rejeicao se Ku sair da faixa [kumin, kumax].
 
-5.4 DENSIDADE DE FLUXO DE PICO (Bpk)
-------------------------------------
-Usa a IDENTIDADE EXATA da indutancia (correcao teorica importante - o app
-original usava uma forma que subestimava as perdas):
+A densidade de fluxo de pico usa a identidade exata da indutancia - essa foi uma
+correcao teorica importante, porque a forma que o app antigo usava subestimava as
+perdas:
 
    B = L * I / (N * Ae)
 
-que decorre de L = N*Phi/I e Phi = B*Ae. E equivalente a mu0*mu_eff*N*I/le mas
-nao explode (usa L e N reais, sem compor o roll-off). Com Ae em m^2:
+que vem de L = N*Phi/I e Phi = B*Ae. E equivalente a mu0*mu_eff*N*I/le, mas nao explode,
+porque usa o L e o N ja calculados sem recompor o roll-off. Com Ae em m^2:
 
    B_max = L * (ILmed + IL_max/2) / (N * Ae)     [T]
    B_min = L * (ILmed - IL_max/2) / (N * Ae)     [T]
    Bpk   = 0.5 * (B_max + B_min)                 [T]
 
-(O bug legado reproduzivel com opts.legacyBpkBug usava
-B = mu0*mu_r*I/(CEM/1000) - sem N e com o comprimento medio de espira CEM no
-lugar do caminho magnetico le, subestimando Bpk em ~4-5x.)
+(Da para reproduzir o bug antigo com opts.legacyBpkBug: ele usava
+B = mu0*mu_r*I/(CEM/1000), sem o N e com o comprimento medio de espira CEM no lugar do
+caminho magnetico le, o que subestimava Bpk em umas 4 a 5 vezes.)
 
-5.5 PERDA DE NUCLEO (Steinmetz por material)
---------------------------------------------
+A perda de nucleo e por Steinmetz, com coeficientes que dependem do material:
+
    - Magnetics:  Pv = P_a * Bpk^P_b * (fs/1000)^P_c     [mW/cm^3]
-     onde P_a, P_b, P_c sao coeficientes POR MATERIAL E PERMEABILIDADE,
-     importados do Curve-Fit-Equation-Tool (aba Magnetics_CurveFit). Antes
-     todos os materiais Magnetics usavam o mesmo ajuste hardcoded (MPP mu40),
-     o que tornava os materiais INDISTINGUIVEIS - corrigido.
-   - Magmattec:  interpolacao bilinear empirica das curvas do datasheet
-     (pcore_magmattec, por material 002/026/034/052), com Bpk em Gauss e fs
-     em kHz. Retorna NaN abaixo de 10 mW/cm^3 (fora da regiao de validade).
+     onde P_a, P_b, P_c vem por material E por permeabilidade, importados do
+     Curve-Fit-Equation-Tool (aba Magnetics_CurveFit). Antes, todos os materiais
+     Magnetics usavam o mesmo ajuste fixo (o do MPP mu40), o que deixava os materiais
+     indistinguiveis - isso foi corrigido.
+   - Magmattec:  interpolacao bilinear das curvas do datasheet (pcore_magmattec, por
+     material 002/026/034/052), com Bpk em gauss e fs em kHz. Retorna NaN abaixo de
+     10 mW/cm^3, que ja e fora da regiao de validade.
 
    Pcore = Pv[mW/cm^3] * 1e-3 * Vol_nucleo[cm^3]     [W]
 
-5.6 PERDA NO COBRE COM REALIMENTACAO TERMICA
---------------------------------------------
-Itera (6x) porque a resistencia do cobre cresce com a temperatura:
+A perda no cobre precisa iterar (6 vezes) porque a resistencia sobe com a temperatura:
 
    CEM   = (2*HT + (OD - ID)) * 1.1                  [mm]  (comprimento medio de espira)
    R_awg(T) = r_awg * (1 + 0.00393 * DeltaT)         [ohm/m]
@@ -301,73 +264,66 @@ Itera (6x) porque a resistencia do cobre cresce com a temperatura:
    Pcu      = R_fio * ILef^2                          [W]
    Ptotal   = Pcore + Pcu                             [W]
    Sa       = 2*pi*(OD/2)^2 + 2*pi*OD/4 * HT          [mm^2]  (area de dissipacao)
-   DeltaT   = (1e5 * Ptotal / Sa)^0.833               [degC]  (elevacao de temp)
+   DeltaT   = (1e5 * Ptotal / Sa)^0.833               [degC]  (elevacao de temperatura)
 
-Rejeita se DeltaT > DeltaTmax.
+com rejeicao se DeltaT passar de DeltaTmax. Por fim, o volume:
 
-5.7 VOLUME E LIMITES FINAIS
----------------------------
-   d_atual = 2 * ID * (1 - sqrt(1 - Ku))                      [mm]
+   d_atual = 2 * ID * (1 - sqrt(1 - Ku))                        [mm]
    Vol     = pi * ((OD + d_atual)/2)^2 * (HT + d_atual) * 1e-3  [cm^3]
 
-Rejeita se Ptotal > MaxLoss ou Vol > MaxVol.
+e rejeita se Ptotal > MaxLoss ou Vol > MaxVol.
 
-OBS sobre "pontos parecidos": como d_atual e pequeno para Ku baixo, o volume e
-dominado pelo nucleo; designs do mesmo nucleo colapsam quase no mesmo volume.
-Por isso a interface mostra o MELHOR design de CADA nucleo distinto
-(i_bestPerCore), espalhando os pontos pelo eixo de volume.
+Sobre aquele efeito de "pontos quase iguais" no grafico: como d_atual e pequeno quando
+Ku e baixo, o volume acaba dominado pelo nucleo, e varios projetos do mesmo nucleo caem
+quase no mesmo ponto. Por isso a interface mostra so o melhor projeto de cada nucleo
+distinto (i_bestPerCore), o que espalha os pontos ao longo do eixo de volume.
 
-================================================================================
- 6. PROJETO DO TRANSFORMADOR  (pdpwr.design.transformer)
-================================================================================
 
-Transformador de alta frequencia. Suporta ferrites Magnetics (R/P/F/T via
-Steinmetz), ferrites TDK (N27..N97 via rede neural) e Magmattec (material '139'
-via Steinmetz). Geometrias toroidal ('R') e EE.
+6. Projeto do transformador  (pdpwr.design.transformer)
+-------------------------------------------------------
+Transformador de alta frequencia. Ele cobre ferrites Magnetics (R/P/F/T, via
+Steinmetz), ferrites TDK (N27 a N97, via rede neural) e Magmattec (material '139', via
+Steinmetz), em geometria toroidal ('R') ou EE.
 
-6.1 ESPIRAS POR LEI DE FARADAY (determina N para um dado Bmax) **
-----------------------------------------------------------------------------
-   ***  ESTA E A "EQUACAO DE FARADAY" que determina o numero de espiras  ***
-   ***  para uma dada densidade de fluxo de pico Bmax (=Bm).             ***
+O ponto de partida e a lei de Faraday, que fixa o numero de espiras para um dado Bmax
+(= Bm):
 
    Np = round( (Vd * 1e4) / (k * Bm * fs * Ae_cm2) )        [espiras]
    Ns = ceil(Np * n)
 
-   O "k" e a CONSTANTE DE FARADAY, agora um CAMPO DE ENTRADA na interface
-   ("Faraday Constant (k)", default 9) - o usuario escolhe o valor conforme a
-   forma de onda do conversor. (Antes o 9 era fixo no codigo.)
+O "k" ai e a constante de Faraday, que virou um campo de entrada na interface ("Faraday
+Constant (k)", padrao 9) - voce escolhe o valor conforme a forma de onda do conversor.
+Antes esse 9 estava fixo no codigo.
 
-   DEDUCAO (de onde vem):
-   A lei de Faraday diz que a tensao induzida e a derivada do fluxo enlacado:
-        v(t) = N * dPhi/dt = N * Ae * dB/dt
-   Integrando sobre o intervalo em que a tensao Vd e aplicada, o fluxo varia de
-   -Bm a +Bm (excursao DeltaB = 2*Bm). Isso da a forma geral:
-        N = V / (k * f * B * Ae)
-   onde k depende da FORMA DE ONDA aplicada ao enrolamento:
-        k = 4.44 (= sqrt(2)*pi)  -> tensao senoidal
-        k = 4                    -> onda quadrada simetrica
-        k = 9                    -> forma de onda do inversor TRIFASICO de 3
-                                    NIVEIS deste conversor (balanco volt-segundo
-                                    especifico; herdado do app2/artigo)
-   Com Ae em cm^2 (Ae_m2 = Ae_cm2 * 1e-4), isolando o 1e-4 vira o fator 1e4:
-        Np = Vd / (9 * fs * Bm * Ae_cm2 * 1e-4) = Vd * 1e4 / (9 * Bm * fs * Ae_cm2)
+De onde vem: a lei de Faraday diz que a tensao induzida e a derivada do fluxo enlacado,
 
-   INTERPRETACAO: para um Bmax escolhido, ha um numero exato de espiras. Menos
-   espiras -> B maior (risco de SATURAR o nucleo); mais espiras -> B menor, mas
-   mais cobre (janela enche, Ku sobe). Por isso a varredura testa varios Bm
-   (Min/Max Peak B) e o J, buscando o melhor compromisso. Rejeita se Np <= 0.
+   v(t) = N * dPhi/dt = N * Ae * dB/dt
 
-   (O INDUTOR tem o equivalente desta lei na secao 5: la as espiras vem da
-   indutancia, N = sqrt(L/AL), e o B resulta de B = L*I/(N*Ae) - mesma fisica,
-   Phi = B*Ae e v = N*dPhi/dt, escrita em funcao de L em vez de da tensao.)
+Integrando no intervalo em que a tensao Vd fica aplicada, o fluxo excursiona de -Bm a
++Bm (DeltaB = 2*Bm), o que leva a forma geral N = V / (k * f * B * Ae). O k depende da
+forma de onda no enrolamento: 4.44 (= sqrt(2)*pi) para tensao senoidal, 4 para onda
+quadrada simetrica, e 9 para a forma de onda do inversor trifasico de 3 niveis deste
+conversor (um balanco volt-segundo especifico, herdado do app2 e do artigo). Com Ae em
+cm^2 (Ae_m2 = Ae_cm2 * 1e-4), o 1e-4 sobe e vira o fator 1e4:
 
-6.2 COMPRIMENTO MEDIO DE ESPIRA (CEM)
--------------------------------------
+   Np = Vd / (9 * fs * Bm * Ae_cm2 * 1e-4) = Vd * 1e4 / (9 * Bm * fs * Ae_cm2)
+
+A leitura pratica: para um Bmax escolhido, ha um numero exato de espiras. Menos espiras
+significa B maior (e risco de saturar o nucleo); mais espiras baixam o B mas gastam mais
+cobre, e a janela enche (Ku sobe). E por isso que a varredura testa varios Bm (Min/Max
+Peak B) e varios J, atras do melhor compromisso. Se Np der <= 0, rejeita.
+
+Vale notar que o indutor da secao 5 tem o equivalente dessa lei: la as espiras saem da
+indutancia (N = sqrt(L/AL)) e o B resulta de B = L*I/(N*Ae) - e a mesma fisica,
+Phi = B*Ae e v = N*dPhi/dt, so escrita em funcao de L em vez da tensao.
+
+O comprimento medio de espira depende da geometria:
+
    EE:        CEM = (2*Ae/H + 2*H) * 1.1            [cm]
    Toroidal:  CEM = (2*H + (OD - ID)) * 1.1         [cm]
 
-6.3 JANELA E FATOR DE UTILIZACAO (Ku)
--------------------------------------
+A janela e o Ku:
+
    Scu_prim = Ipef / J ;  Scu_sec = Isef / J        [cm^2]
    Nfios_prim = ceil(Scu_prim / Afio)               (fios em paralelo)
    Nfios_sec  = ceil(Scu_sec  / Afio)
@@ -375,176 +331,170 @@ via Steinmetz). Geometrias toroidal ('R') e EE.
    Aw       = Ap / Ae                                [cm^2]  (Ap = WaAc)
    Ku       = Area_nec / Aw
 
-Rejeita se Ku < kumin ou Ku > kumax.
+com rejeicao se Ku sair de [kumin, kumax].
 
-6.4 PERDA DE NUCLEO
--------------------
-   - Magnetics R/P/F/T e Magmattec '139' (Steinmetz polinomial):
-        nPv = k * fs^alpha * Bm^beta * (c1 - c2*T + c3*T^2) / 1000   [mW/cm^3]
-     ATENCAO: a ordem dos coeficientes no coefficients.xlsx e
-        col1 = k, col2 = alpha, col3 = beta, col4..6 = c1,c2,c3.
-     (Um bug anterior trocava alpha<->k, gerando perdas ~1e16 e rejeitando
-      TODO transformador. Corrigido.)
-   - TDK N27..N97 (rede neural feed-forward pre-treinada):
-        nPv = NN(fs, Bm, T)   com ativacao tansig, pesos/bias de um .mat.
+A perda de nucleo depende do material. Para Magnetics R/P/F/T e para o Magmattec '139',
+e um Steinmetz polinomial:
 
-   PnucleoSE = Ve_cm3 * nPv / 1000     [W]
+   nPv = k * fs^alpha * Bm^beta * (c1 - c2*T + c3*T^2) / 1000   [mW/cm^3]
 
-6.5 STEINMETZ GENERALIZADO (GSE) - opcional
--------------------------------------------
-No detalhamento (nao na varredura), calcula perdas superior/inferior pela forma
-de onda real de 6 segmentos (Vo > 480 V) ou 3 segmentos:
+Um cuidado importante: no coefficients.xlsx a ordem das colunas e col1 = k,
+col2 = alpha, col3 = beta e col4..6 = c1, c2, c3. Um bug anterior trocava alpha com k, o
+que gerava perdas da ordem de 1e16 e fazia a ferramenta rejeitar todo transformador -
+ja corrigido. Para os TDK N27 a N97 a perda vem de uma rede neural feed-forward
+pre-treinada:
+
+   nPv = NN(fs, Bm, T)   com ativacao tansig e pesos/bias de um arquivo .mat.
+
+Em qualquer caso, PnucleoSE = Ve_cm3 * nPv / 1000  [W].
+
+Ha ainda o Steinmetz generalizado (GSE), que so entra no detalhamento, nao na varredura.
+Ele calcula as perdas superior e inferior a partir da forma de onda real (6 segmentos
+para Vo > 480 V, 3 segmentos caso contrario):
 
    P_GSE = (V/T) * integral( k_i * |dB/dt|^alpha * |B|^(beta-alpha) dt )
    k_i   = k / ( (2*pi)^(alpha-1) * integral_0^2pi |cos|^alpha |sin|^(beta-alpha) dtheta )
 
-Desabilitado na varredura (gseEnabled=false) por custo computacional; retorna
-NaN se Np<=0 ou (beta-alpha)<=-0.99 (integral divergiria).
+Fica desligado na varredura (gseEnabled=false) por causa do custo das integrais, e
+retorna NaN se Np <= 0 ou se (beta-alpha) <= -0.99, quando a integral divergiria.
 
-6.6 PERDA NO COBRE COM REALIMENTACAO TERMICA (5 iteracoes)
-----------------------------------------------------------
+A perda no cobre tambem itera (5 vezes), pela mesma razao termica do indutor:
+
    Rp = Rcfio * Compfio_prim / Nfios_prim ;  Rs = Rcfio * Compfio_sec / Nfios_sec
    Pcond = Rp*Ipef^2 + Rs*Isef^2
    EE:        Sa = 2*(Leg*Len + H*Leg + H*Len)            [cm^2]
    Toroidal:  Sa = 2*pi*(OD/2)^2 + 2*pi*OD/4 * H
    Ptrafo = Pcond + PnucleoSE
    DeltaT = (1000 * Ptrafo / Sa)^0.833                     [degC]
-   Rcfio(T) = Rfio * (1 + 0.0038*(DeltaT + T - 20))        (atualiza a cada iter)
+   Rcfio(T) = Rfio * (1 + 0.0038*(DeltaT + T - 20))        (atualizado a cada iteracao)
 
-6.7 VOLUME E LIMITES FINAIS
----------------------------
+E o fecho, volume e limites:
+
    Vcu     = Compfio_prim*Afio*Nfios_prim + Compfio_sec*Afio*Nfios_sec   [cm^3]
    Vtotal  = Ve_cm3 + Vcu                                                [cm^3]
-Rejeita se DeltaT > DeltaTmax, Ptrafo > Pnucleomax ou Vtotal > Vmax.
 
-================================================================================
- 7. COMBINACAO DE DENSIDADE DE POTENCIA  (pdpwr.density)
-================================================================================
+com rejeicao se DeltaT > DeltaTmax, Ptrafo > Pnucleomax ou Vtotal > Vmax.
 
-A aba Power Density combina 1 escolha de cada familia (MOSFET-I, MOSFET-II,
-Diodo, Indutor, Trafo) e calcula rendimento e densidade do conjunto. Para manter
-a explosao combinatoria tratavel, cada familia e limitada as 10 entradas de
-MENOR perda (CAP=10 -> 10^5 = 100 mil combinacoes).
 
-7.1 UNIDADE E MULTIPLICADOR
----------------------------
-Cada componente tem uma "unidade" e um multiplicador (quantos o conversor usa):
-   - Semicondutor: UNIDADE = 1 dissipador + seus Q dies (Devices per HS).
-        perda_unidade  = Q * perda_de_1_die   (GroupLossW)
-        volume_unidade = volume de 1 dissipador
-        multiplicador  = numero de GRUPOS/BRACOS (ex.: 4 bracos -> x4)
-   - Magnetico: UNIDADE = 1 projeto de nucleo; multiplicador = quantidade.
+7. Combinacao da densidade de potencia  (pdpwr.density)
+-------------------------------------------------------
+A aba Power Density junta uma escolha de cada familia (MOSFET-I, MOSFET-II, diodo,
+indutor e trafo) e calcula o rendimento e a densidade do conjunto. Como o numero de
+combinacoes explode, cada familia entra limitada as 10 entradas de menor perda
+(CAP = 10, ou seja 10^5 = 100 mil combinacoes).
+
+Cada componente tem uma "unidade" e um multiplicador (quantos o conversor usa). Para os
+semicondutores, a unidade e um dissipador com seus Q dies (Devices per HS): a perda da
+unidade e a do conjunto (Q vezes a de um die, o GroupLossW), o volume e o de um
+dissipador, e o multiplicador e o numero de grupos/bracos (4 bracos, por exemplo, dao um
+fator 4). Para os magneticos, a unidade e um projeto de nucleo e o multiplicador e a
+quantidade. Somando sobre as familias:
 
    P_loss_total = soma( mult_i * perda_unidade_i )
    Volume_total = soma( mult_i * volume_unidade_i )
 
-7.2 METRICAS
-------------
+E as metricas:
+
    eta       = (P_out - P_loss_total) / P_out * 100   [%]
    powerDens = P_out        / (Volume_total * 0.001)  [W/L]
    lossDens  = P_loss_total / (Volume_total * 0.001)  [W/L]
 
-7.3 DUAS VISTAS (eixo X = Eficiencia, como no app2 original)
-------------------------------------------------------------
-   Vista "Loss / Vol" (PADRAO):  X = Eficiencia [%], Y = Densidade de perdas [W/L]
-        (= P_loss_total/Vol). REPRODUZ EXATAMENTE o grafico do app2 original.
-        filtros: Max Total Losses e Max Loss Density.
-   Vista "P_out / Vol":          X = Eficiencia [%], Y = Densidade de potencia
-        [W/L] (= P_out/Vol). filtros: Min Efficiency e Min Power Density.
-   O par de filtros nao usado fica desabilitado (cinza); os eixos se rerotulam
-   ao trocar de vista.
+Sao duas vistas, sempre com a eficiencia no eixo X (como no app2 original). A vista
+"Loss / Vol" (a padrao) poe a densidade de perdas no Y (= P_loss_total/Vol) e reproduz
+exatamente o grafico do app antigo; seus filtros sao Max Total Losses e Max Loss
+Density. A vista "P_out / Vol" poe a densidade de potencia no Y (= P_out/Vol), com
+filtros Min Efficiency e Min Power Density. O par de filtros que nao esta em uso fica
+cinza, e os eixos se rerotulam quando voce troca de vista.
 
-   Quantidade de combinacoes (dropdown "Combinations"):
-   - "Spread" (padrao): 10 entradas por familia espalhadas pela faixa de perdas
-     (10^5 = 100k sets) - mantem a nuvem de trade-off completa, rapido.
-   - "Top 10 best": as 10 de menor perda de cada familia.
-   - "All": combina TODOS os projetos em cache (opts.MaxResults = 1e6 armazenados);
-     localiza um projeto especifico mesmo entre os piores. Avisa que e lento e
-     consome memoria (pre-aloca min(produto, MaxResults) e para ao atingir o limite).
+O dropdown "Combinations" controla quantas combinacoes testar. "Spread" (o padrao) pega
+10 entradas por familia espalhadas pela faixa de perdas (10^5 = 100k conjuntos), o que
+mantem a nuvem de trade-off inteira e e rapido. "Top 10 best" pega so as 10 de menor
+perda de cada familia. "All" combina todos os projetos em cache (guardando ate
+opts.MaxResults = 1e6) e serve para achar um projeto especifico, mesmo que ele esteja
+entre os piores - a interface avisa que e lento e pesado, ja que pre-aloca
+min(produto, MaxResults) e para ao atingir o limite.
 
-================================================================================
- 8. PARAMETROS REAIS DO PROTOTIPO (referencia do artigo SOBRAEP/OJPE)
-================================================================================
 
-Conversor CC-CC isolado trifasico soft-switching, fs=50 kHz:
+8. Parametros do prototipo de referencia (artigo SOBRAEP/OJPE)
+--------------------------------------------------------------
+O conversor de referencia e um CC-CC isolado trifasico soft-switching, com fs = 50 kHz:
+
    Vin = 600 V, Vo = 920 V, Po = 10 kW, Io = 14.28 A
    Ld (indutor de comutacao) = 5 uH, n (Np/Ns) = 0.8333, L_filtro = 1 mH, Co = 100 uF
 
-Protótipo otimizado:
-   - Indutor de filtro: Magnetics MPP mu=147, 52 espiras, AWG16, Ku=25.77%,
-     ~20 cm^3 (tensao sobre o indutor ~ 300 V, NAO os 600/800 V do barramento;
-     corrente media 14 A).
-   - Transformador: Magmattec MMT139, Np=35, Ns=42, AWG38 Litz, ~100 cm^3
-     (corrente primaria ~ 2.8 A = 1.67 kW / 600 V).
+No prototipo otimizado, o indutor de filtro usa um Magnetics MPP de mu = 147, com 52
+espiras, AWG16, Ku = 25.77% e cerca de 20 cm^3 (a tensao sobre o indutor e de uns 300 V,
+nao os 600/800 V do barramento, e a corrente media e de 14 A). O transformador usa um
+Magmattec MMT139, com Np = 35, Ns = 42, AWG38 Litz e cerca de 100 cm^3 (a corrente do
+primario e de uns 2.8 A = 1.67 kW / 600 V).
 
-Estes valores guiam os DEFAULTS das abas (ex.: tensao do indutor ~300 V,
-corrente primaria do trafo ~5 A) e explicam por que certos cenarios
-historicamente "rejeitavam tudo" (tensao/corrente erradas geravam L/espiras
-excessivas e Ku > kumax).
+Esses numeros guiam os valores padrao das abas (a tensao do indutor em torno de 300 V, a
+corrente do primario do trafo perto de 5 A, e assim por diante) e explicam por que certos
+cenarios "rejeitavam tudo" no passado: com tensao ou corrente erradas, o L e o numero de
+espiras ficavam grandes demais e o Ku estourava o kumax.
 
-================================================================================
- 9. RESUMO DAS CORRECOES TEORICAS APLICADAS
-================================================================================
 
-1. Bpk do indutor: identidade exata B = L*I/(N*Ae) (era forma com CEM no lugar
-   de le, sem N -> subestimava perdas ~4-5x).
-2. Core loss por material no Magmattec: 002/026/034/052 cada um com sua curva
-   (o legado sempre chamava pcore002).
-3. Coeficientes Steinmetz POR material e permeabilidade nos magneticos
-   (Magnetics_CurveFit) - antes todos usavam MPP mu40 hardcoded.
-4. Steinmetz do trafo: ordem correta k=col1, alpha=col2, beta=col3 (a troca
-   anterior gerava perdas ~1e16 e rejeitava todo transformador).
-5. Rendimento: eta = (Pout - perdas)/Pout (forma da aba power-density do app2
-   original). Eixo X = Eficiencia, Y = densidade (orientacao do original).
-6. Densidade: vista PADRAO "Loss / Vol" reproduz o original (Y = Loss/Vol);
-   vista alternativa "P_out / Vol" mostra a densidade de potencia (Y = Pout/Vol).
-7. Dissipador: cadeia termica e fit de comprimento fieis ao original
-   (DIODESapp.m), volume = (L/10)(H/10)(W/10).
+9. Resumo das correcoes teoricas
+--------------------------------
+1. Bpk do indutor pela identidade exata B = L*I/(N*Ae) - antes era uma forma com o CEM
+   no lugar do le e sem o N, que subestimava as perdas em 4 a 5 vezes.
+2. Perda de nucleo por material no Magmattec: 002, 026, 034 e 052, cada um com a sua
+   curva (o legado chamava sempre a pcore002).
+3. Coeficientes de Steinmetz por material e permeabilidade nos magneticos
+   (Magnetics_CurveFit) - antes todos usavam o MPP mu40 fixo.
+4. Steinmetz do trafo na ordem certa: k = col1, alpha = col2, beta = col3 (a troca
+   anterior gerava perdas de 1e16 e rejeitava todo transformador).
+5. Rendimento de volta a forma da aba power-density do app2, eta = (Pout - perdas)/Pout,
+   com eixo X = eficiencia e Y = densidade (a orientacao do original).
+6. Densidade com a vista padrao "Loss / Vol" reproduzindo o original (Y = Loss/Vol) e a
+   alternativa "P_out / Vol" mostrando a densidade de potencia (Y = Pout/Vol).
+7. Dissipador com a cadeia termica e o fit de comprimento fieis ao original
+   (DIODESapp.m), e volume = (L/10)(H/10)(W/10).
 
-================================================================================
- 10. RESUMO DAS EQUACOES FUNDAMENTAIS (referencia rapida)
-================================================================================
-Todas as variaveis e unidades estao detalhadas nas secoes acima. Aqui ficam
-reunidas as equacoes mais importantes do projeto.
 
---- SEMICONDUTORES ---
- MOSFET:
+10. Todas as equacoes num lugar so (referencia rapida)
+------------------------------------------------------
+As variaveis e unidades estao detalhadas nas secoes acima; aqui ficam as equacoes
+principais reunidas.
+
+Semicondutores - MOSFET:
    Eon, Eoff = lookup PLECS(I, Vds, Tj, Rg)                       [J]
    P_on  = fs * Eon         (=0 se ZVS)                           [W]
    P_off = fs * Eoff                                              [W]
    Rds_on = 0.5*(Vdrop(Ion)/Ion + Vdrop(Ioff)/Ioff)              [ohm]
    P_cond = Rds_on * I_RMS^2                                      [W]
    P_total = P_on + P_off + P_cond
- Diodo SiC Schottky (sem recuperacao reversa):
+
+Semicondutores - diodo SiC Schottky (sem recuperacao reversa):
    R_d(Tj)  = Rd_a*Tj^2 + Rd_b*Tj + Rd_c                          [ohm]
    V_TO(Tj) = Vto_a*Tj^2 + Vto_b*Tj + Vto_c                       [V]
    P_cond = R_d*I_RMS^2 + V_TO*I_avg     (x2 e /2 se "Per Leg")   [W]
 
---- DISSIPADOR ---
+Dissipador:
    T_HS_device = Tj - P_loss*(R_chs + R_jc)                       [degC]
    R_required  = (T_HS_device - T_amb) / (Q * P_loss)            [degC/W]
-                 (ou deltaT_allowed/(Q*P_loss) se limitado pela temp do HS)
+                 (ou deltaT_allowed/(Q*P_loss) se a temp do HS mandar)
    L  = 64.1030/(R_required/R_ha - 0.4258) + 14.754              [mm]
    Vol = (L/10)*(H/10)*(W/10)                                     [cm^3]
 
---- INDUTOR ---
+Indutor:
    L     = Vd / (4*fs*DeltaIL)                                    [H]
    ILef  = ILmed*sqrt(1 + (DeltaIL/ILmed)^2/12)                   [A]
    AL0   = mu_rel*mu0*(Ae/le)                                   [H/esp^2]
-   N     = ceil(sqrt(L/AL))          (AL = AL0*mu%/100)         <- "espiras"
+   N     = ceil(sqrt(L/AL))          (AL = AL0*mu%/100)         <- espiras
    mu%   = 1/(a + b*H^c)*100   (roll-off; H = 4*pi*(N/le)*ILmed) [Oe]
-   Bpk   = L*I/(N*Ae)                                             [T]   <- B
+   Bpk   = L*I/(N*Ae)                                             [T]
    Pv    = P_a * Bpk^P_b * (fs/1000)^P_c          [mW/cm^3]  (Steinmetz/material)
    Pcore = Pv*1e-3 * Vol_nucleo                                   [W]
    Pcu   = (N*CEM*R_awg/Nparal) * ILef^2                          [W]
    DeltaT = (1e5*(Pcore+Pcu)/Sa)^0.833                            [degC]
 
---- TRANSFORMADOR ---
-   *** FARADAY (espiras para um dado Bmax): ***
+Transformador:
+   Faraday (espiras para um dado Bmax):
    Np = Vd*1e4 / (k*Bm*fs*Ae_cm2)        [espiras]   (k = campo "Faraday Constant")
    Ns = ceil(Np*n)
-   (forma geral: N = V/(k*f*B*Ae); k=4.44 senoidal, 4 quadrada, 9 deste conversor;
-    o usuario informa k na interface, default 9)
+   (forma geral N = V/(k*f*B*Ae); k = 4.44 senoidal, 4 quadrada, 9 deste conversor;
+    o usuario informa k, padrao 9)
    Ku  = Area_nec / (Ap/Ae)                                       [-]
    Pv  = k*fs^alpha*Bm^beta*(c1 - c2*T + c3*T^2)/1000   [mW/cm^3] (Steinmetz)
          (TDK N..: Pv vem da rede neural NN(fs,Bm,T))
@@ -552,13 +502,9 @@ reunidas as equacoes mais importantes do projeto.
    Pcond = Rp*Ipef^2 + Rs*Isef^2                                  [W]
    DeltaT = (1000*(Pcore+Pcond)/Sa)^0.833                         [degC]
 
---- DENSIDADE DE POTENCIA (combinacao) ---
+Densidade de potencia (combinacao):
    P_loss_total = soma( mult_i * perda_unidade_i )                [W]
    Volume_total = soma( mult_i * volume_unidade_i )               [cm^3]
    eta       = (P_out - P_loss_total)/P_out * 100                 [%]
    powerDens = P_out        / (Volume_total*0.001)                [W/L]
    lossDens  = P_loss_total / (Volume_total*0.001)                [W/L]
-
-================================================================================
- FIM - THEORY.txt
-================================================================================

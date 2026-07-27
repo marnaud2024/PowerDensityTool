@@ -146,7 +146,7 @@ function [supGSE, infGSE] = i_gseLosses(D, core, mat)
     if Np <= 0, return; end
     c = mat.beta - mat.alpha;
     if c <= -0.99
-        % Integrand would blow up at a*x+b=0 — skip GSE for this case.
+        % Integrand blows up at a*x+b=0, so skip the GSE in this case.
         return
     end
 
