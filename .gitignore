@@ -1,0 +1,42 @@
+# ---- Generated results (the app recreates output/ on demand) ----
+output/
+
+# ---- Build artifacts (distribute the installer via GitHub Releases) ----
+build/app/
+build/setup/
+
+# ---- MATLAB ----
+*.asv
+*.mex*
+slprj/
+codegen/
+octave-workspace
+
+# ---- LaTeX build artifacts ----
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+*.auxlock
+*.nav
+*.snm
+*.vrb
+
+# ---- Editor / assistant metadata (keep out of the repo) ----
+.claude/
+.vscode/
+CLAUDE.md
+
+# ---- OS junk ----
+Thumbs.db
+.DS_Store
+desktop.ini

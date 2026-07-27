@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SemiconductorLibrary xmlns="http://www.plexim.com/xml/semiconductors/" version="1.4">
+    <Package class="GeneSiCMOSFET" vendor="GeneSiC" partnumber="G3R160MT12D">
+        <Constants>
+            <Constant>
+                <Name>Ron</Name>
+                <Description>MOSFET on-resistance (Ohms)</Description>
+                <Value>0.16</Value>
+            </Constant>
+            <Constant>
+                <Name>Vf_bd</Name>
+                <Description>Body diode forward voltage (V)</Description>
+                <Value>4.9</Value>
+            </Constant>
+            <Constant>
+                <Name>Ids_max</Name>
+                <Description>Maximum current (A)</Description>
+                <Value>35</Value>
+            </Constant>
+        </Constants>
+        <Variables>
+            <Variable>
+                <Name>v</Name>
+                <MaxValue>1200</MaxValue>
+            </Variable>
+            <Variable>
+                <Name>T</Name>
+                <MaxValue>175</MaxValue>
+            </Variable>
+            <Variable>
+                <Name>Vgson</Name>
+                <Description>Vgson (V)</Description>
+                <DefaultValue>15</DefaultValue>
+                <MinValue>15</MinValue>
+                <MaxValue>18</MaxValue>
+            </Variable>
+            <Variable>
+                <Name>Vgsoff</Name>
+                <Description>Vgsoff (V)</Description>
+                <DefaultValue>-3</DefaultValue>
+                <MinValue>-5</MinValue>
+                <MaxValue>0</MaxValue>
+            </Variable>
+            <Variable>
+                <Name>Rg</Name>
+                <Description>External gate resistance (Ω)</Description>
+                <DefaultValue>10</DefaultValue>
+                <MinValue>8</MinValue>
+                <MaxValue>20</MaxValue>
+            </Variable>
+        </Variables>
+        <CustomTables>
+            <Table2D>
+                <Name>IV(Vgs,25C)</Name>
+                <XAxis> -27 -25.7 -24.4 -23.1 -21.8 -20.5 -19.2 -17.9 -16.6 -15.3 -14 -12.7 -11.4 -10.1 -8.8 -7.5 -6.2 -4.9 -3.6 -2.3 -1 0 0.3 1.6 2.9 4.2 5.5 6.8 8.1 9.4 10.7 12 13.3 14.6 15.9 17.2 18.5 19.8 21.1 22.4 23.7 25</XAxis>
+                <YAxis> 15 18</YAxis>
+                <FunctionValues scale="1">
+                    <YDimension> -5.182876791 -4.860670325 -4.545680072 -4.237887395 -3.937370812 -3.643667444 -3.35693303 -3.077138899 -2.803613171 -2.537639146 -2.278137801 -2.025169617 -1.779404889 -1.541106869 -1.310010315 -1.086511163 -0.871151132 -0.664702485 -0.468345701 -0.284146495 -0.118335832 0 0.032312045 0.192817541 0.374066615 0.568518887 0.773759266 0.988387862 1.211589598 1.442766559 1.681555464 1.927632517 2.18081416 2.440961739 2.7080123 2.981927934 3.26267543 3.550283145 3.844848395 4.146414056 4.455104588 4.771060468</YDimension>
+                    <YDimension> -3.913412943 -3.689267364 -3.468083849 -3.24989751 -3.034749471 -2.822687364 -2.613767816 -2.408055726 -2.205627112 -2.006571005 -1.810992089 -1.619014188 -1.430784884 -1.24648168 -1.066320249 -0.89056515 -0.719541739 -0.553637703 -0.393207271 -0.24173676 -0.102997587 0 0.02891505 0.166784028 0.318147129 0.477952461 0.644407934 0.816649122 0.993926976 1.175891455 1.362132097 1.552421827 1.746588057 1.944448513 2.145863681 2.350725243 2.558965848 2.770486549 2.985217328 3.203108101 3.424151999 3.648255125</YDimension>
+                </FunctionValues>
+            </Table2D>
+            <Table2D>
+                <Name>RdsonVsTemp(Vgs)</Name>
+                <XAxis> 25 35 45 55 65 75 85 95 105 115 125 135 145 155 165 175</XAxis>
+                <YAxis> 15 18</YAxis>
+                <FunctionValues scale="1">
+                    <YDimension> 155.2031728 155.887747 157.1016942 158.8223319 161.0339437 163.7196257 166.8637753 170.4504891 174.4711535 178.9132067 183.7653301 189.0184869 194.6641801 200.6961846 207.1068326 213.8883988</YDimension>
+                    <YDimension> 126.1322835 128.1744189 130.6197313 133.4643955 136.6954118 140.304242 144.2879274 148.6372877 153.3457151 158.4079392 163.81888 169.5737218 175.6694164 182.1016055 188.8653232 195.9585643</YDimension>
+                </FunctionValues>
+            </Table2D>
+            <Table3D>
+                <Name>IV_3rd(Temp,Vgs)</Name>
+                <XAxis> -13.99 -12.33 -10.86 -9.57 -8.43 -7.42 -6.54 -5.76 -5.08 -4.47 -3.94 -3.47 -3.06 -2.69 -2.37 -2.09 -1.84 -1.62 -1.43 -1.26 -1.11 -0.97 -0.86 -0.75 -0.66 -0.58 -0.51 -0.45 -0.4 -0.35 -0.31 -0.27 -0.24 -0.21 -0.18 -0.16 -0.14 -0.12 -0.11 -0.1 0 1</XAxis>
+                <YAxis> 25 175</YAxis>
+                <ZAxis> -5 -3 0</ZAxis>
+                <FunctionValues scale="1">
+                    <ZDimension>
+                        <YDimension> -6.345709324 -6.129449222 -5.917763103 -5.737927206 -5.548174965 -5.384588193 -5.218735275 -5.080707961 -4.941672439 -4.812066952 -4.672550261 -4.566986749 -4.467396611 -4.359001349 -4.253475802 -4.155150474 -4.058411687 -3.970119833 -3.893867665 -3.825642041 -3.76544296 -3.709257152 -3.649795116 -3.578482653 -3.520136093 -3.462576422 -3.395154354 -3.33736401 -3.28920539 -3.24104677 -3.191588171 -3.141824264 -3.104501333 -3.067178403 -3.029855472 -3.004973519 -2.980091565 -2.955209611 -2.942768635 -2.930327658 0 0</YDimension>
+                        <YDimension> -5.841500444 -5.591769001 -5.401372454 -5.199004398 -5.032177128 -4.867338776 -4.727326968 -4.570809098 -4.441084453 -4.319696698 -4.197765492 -4.089574628 -3.990020431 -3.886330466 -3.792152349 -3.706996179 -3.626730738 -3.540121591 -3.462628804 -3.389155358 -3.322326552 -3.254101059 -3.200495313 -3.138279951 -3.078081274 -3.024571338 -2.977750144 -2.927608745 -2.883828021 -2.840047298 -2.805022719 -2.769998141 -2.743729707 -2.696477338 -2.626247897 -2.579428269 -2.532608641 -2.485789013 -2.462379199 -2.438969385 0 0</YDimension>
+                    </ZDimension>
+                    <ZDimension>
+                        <YDimension> -6.119859549 -5.89698417 -5.690610424 -5.507487484 -5.317722425 -5.146163277 -4.987624857 -4.837821106 -4.704358135 -4.560762791 -4.437106965 -4.324111168 -4.21813915 -4.114970612 -4.006751491 -3.908355642 -3.826835917 -3.745446676 -3.673460555 -3.600686556 -3.536474203 -3.463589281 -3.402464313 -3.341339344 -3.275554841 -3.216693912 -3.165190599 -3.121044902 -3.072145642 -3.022892328 -2.983489677 -2.944087026 -2.914535038 -2.88498305 -2.855431062 -2.55592844 -2.149937385 -1.74394633 -1.540950803 -1.337955275 0 0</YDimension>
+                        <YDimension> -5.607621684 -5.367063702 -5.153730391 -4.962272073 -4.795760179 -4.620741002 -4.474839382 -4.323115335 -4.19723022 -4.05853904 -3.940676813 -3.829891391 -3.71482101 -3.622186421 -3.532895184 -3.442997891 -3.357960155 -3.280123598 -3.203871575 -3.131229532 -3.052507982 -2.978954083 -2.916414346 -2.853874608 -2.801286463 -2.746953158 -2.699411516 -2.658661537 -2.624703221 -2.590744906 -2.547845694 -2.504502936 -2.471995868 -2.439488799 -2.406981731 -2.385310352 -2.363638973 -2.341967594 -2.331131904 -2.320296215 0 0</YDimension>
+                    </ZDimension>
+                    <ZDimension>
+                        <YDimension> -5.505106593 -5.236872694 -4.983953598 -4.760283161 -4.529728466 -4.328780075 -4.124164041 -3.934766546 -3.74904264 -3.58293495 -3.418967714 -3.272565349 -3.126171759 -2.979550106 -2.857717041 -2.761003028 -2.681146196 -2.613628583 -2.554285477 -2.490608228 -2.434422419 -2.369867017 -2.315533712 -2.261200407 -2.200525591 -2.146192286 -2.098650644 -2.057900665 -2.013432134 -1.957247077 -1.912299032 -1.867350986 -1.833639953 -1.799928919 -1.766217885 -1.712394649 -1.64658051 -1.58076637 -1.547859301 -1.514952231 0 0</YDimension>
+                        <YDimension> -5.119255041 -4.880594447 -4.642620865 -4.425031428 -4.221585194 -4.016497767 -3.832330355 -3.64497509 -3.470396612 -3.295535851 -3.134967286 -2.970848399 -2.808041705 -2.678277222 -2.551126164 -2.445272279 -2.341055032 -2.2401501 -2.153004932 -2.073480763 -1.983182747 -1.898876508 -1.830959876 -1.763043245 -1.707475092 -1.64005664 -1.578253078 -1.525278596 -1.481133194 -1.421347251 -1.373188846 -1.325030441 -1.288911637 -1.252792833 -1.216674029 -1.122015025 -1.000292134 -0.878569243 -0.817707798 -0.756846352 0 0</YDimension>
+                    </ZDimension>
+                </FunctionValues>
+            </Table3D>
+            <Table1D>
+                <Name>EonVsRg(Vds=800)</Name>
+                <XAxis> 8 10 12 14 16 18 20</XAxis>
+                <FunctionValues scale="1"> 77 81.9 87.625 93.75 100.7 108 116</FunctionValues>
+            </Table1D>
+            <Table1D>
+                <Name>EoffVsRg(Vds=800)</Name>
+                <XAxis> 8 10 12 14 16 18 20</XAxis>
+                <FunctionValues scale="1"> 16 17.2 18.55 20.46 22.87 26.3 30.37</FunctionValues>
+            </Table1D>
+            <Table1D>
+                <Name>EonVsTemp(Vds=800)</Name>
+                <XAxis> 25 50 75 100 125 150 175</XAxis>
+                <FunctionValues scale="1"> 80.96533976 85.01360675 89.06187374 93.11014072 98.7777145 104.4452883 110.1128621</FunctionValues>
+            </Table1D>
+            <Table1D>
+                <Name>EoffVsTemp(Vds=800)</Name>
+                <XAxis> 25 50 75 100 125 150 175</XAxis>
+                <FunctionValues scale="1"> 17.2 17.2 17.2 17.2 17.2 17.2 17.2</FunctionValues>
+            </Table1D>
+        </CustomTables>
+        <SemiconductorData type="MOSFET with Diode" nameFilter="MOSFET*">
+            <TurnOnLoss>
+                <ComputationMethod>Table and formula</ComputationMethod>
+                <Formula>E*(lookup('EonVsRg(Vds=800)',Rg)/lookup('EonVsRg(Vds=800)',10))*(lookup('EonVsTemp(Vds=800)',T)/lookup('EonVsTemp(Vds=800)',25))</Formula>
+                <CurrentAxis> -1 0 5 10 15 20</CurrentAxis>
+                <VoltageAxis> 0 600 800</VoltageAxis>
+                <TemperatureAxis> 25</TemperatureAxis>
+                <Energy scale="1e-06">
+                    <Temperature>
+                        <Voltage> 0 0 0 0 0 0</Voltage>
+                        <Voltage> 0 0 24.53495144 59.58488207 100.4764678 147.2097086</Voltage>
+                        <Voltage> 0 0 41.70941746 80.96533976 136.6947295 210.2995838</Voltage>
+                    </Temperature>
+                </Energy>
+            </TurnOnLoss>
+            <TurnOffLoss>
+                <ComputationMethod>Table and formula</ComputationMethod>
+                <Formula>E*lookup('EoffVsRg(Vds=800)',Rg)/lookup('EoffVsRg(Vds=800)',10)</Formula>
+                <CurrentAxis> -1 0 5 10 15 20</CurrentAxis>
+                <VoltageAxis> 0 600 800</VoltageAxis>
+                <TemperatureAxis> 25</TemperatureAxis>
+                <Energy scale="1e-06">
+                    <Temperature>
+                        <Voltage> 0 0 0 0 0 0</Voltage>
+                        <Voltage> 0 0 8.994073285 11.86846784 23.31968486 44.5067544</Voltage>
+                        <Voltage> 0 0 5.516983098 17.61725695 35.2345139 59.3423392</Voltage>
+                    </Temperature>
+                </Energy>
+            </TurnOffLoss>
+            <ConductionLoss gate="on">
+                <ComputationMethod>Formula only</ComputationMethod>
+                <Formula>lookup('IV(Vgs,25C)',i,Vgson)*(lookup('RdsonVsTemp(Vgs)',T,Vgson)/lookup('RdsonVsTemp(Vgs)',25,Vgson))</Formula>
+                <CurrentAxis> 0</CurrentAxis>
+                <TemperatureAxis> 25 175</TemperatureAxis>
+                <VoltageDrop scale="1">
+                    <Temperature> 0</Temperature>
+                    <Temperature> 0</Temperature>
+                </VoltageDrop>
+            </ConductionLoss>
+            <ConductionLoss gate="off">
+                <ComputationMethod>Formula only</ComputationMethod>
+                <Formula>lookup('IV_3rd(Temp,Vgs)',i,T,Vgsoff)</Formula>
+                <CurrentAxis> 0</CurrentAxis>
+                <TemperatureAxis> 25</TemperatureAxis>
+                <VoltageDrop scale="1">
+                    <Temperature> 0</Temperature>
+                </VoltageDrop>
+            </ConductionLoss>
+            <ThermalChain type="Cauer">
+                <RCElement R="0.020202" C="4.5697e-05"/>
+                <RCElement R="0.084939" C="0.00023669"/>
+                <RCElement R="0.076935" C="0.00026132"/>
+                <RCElement R="0.07002" C="0.00028712"/>
+                <RCElement R="0.42558" C="0.00045487"/>
+                <RCElement R="0.73405" C="0.049016"/>
+            </ThermalChain>
+        </SemiconductorData>
+        <ThermalModel>
+            <StateSpaceModel>
+                <Devices/>
+                <Matrix name="A" rows="0" cols="0"/>
+                <Matrix name="B" rows="0" cols="1"/>
+                <Matrix name="C" rows="1" cols="0">
+                    <Row></Row>
+                </Matrix>
+                <Matrix name="D" rows="1" cols="1">
+                    <Row> 0</Row>
+                </Matrix>
+            </StateSpaceModel>
+        </ThermalModel>
+        <Comment>
+            <Line>Switching losses (Eon and Eoff) are given in Figures 21 and 22 in the datasheet for Vdd = 600V and 800V, respectively, and for Tj = 25C, and Rg = 10Ω. The data is then scaled based on the user-specified value of Rg using the data in Figure 23, as well as the measured junction temperature during the simulation, using the data in Figure 25 (note that Eoff is not affected by temperature).</Line>
+            <Line></Line>
+            <Line>* The user should choose a Rg value between 8Ω and 20Ω, with a default value of 10Ω.</Line>
+            <Line></Line>
+            <Line>MOSFET conduction losses are given for Vgson = 15V and 18V in Figure 1 in the datasheet for Tj = 25C. The data in Figure 5 for Rdson vs. T is then used to calculate a more accurate temperature dependence on these specific losses.</Line>
+            <Line></Line>
+            <Line>* The user should choose a Vgson value of 15V or 18V.</Line>
+            <Line></Line>
+            <Line>Body diode conduction losses are given for Vgsoff = 0V, -3V and -5V using data in Figures 17 and 18 in the datasheet at 25C and 175C, respectively.</Line>
+            <Line></Line>
+            <Line>* The user should choose a Vgsoff value of 0V, -3V or -5V.</Line>
+            <Line></Line>
+            <Line>The information above is based on datasheet Rev 23/Feb.</Line>
+        </Comment>
+    </Package>
+</SemiconductorLibrary>

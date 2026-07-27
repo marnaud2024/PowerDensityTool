@@ -1,0 +1,138 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Preâmbulo do template UFC - Pós-Graduação         %%
+%%                                                   %%
+%% Adaptado a partir do template original UFC para   %%
+%% trabalhos de disciplina de pós-graduação com foco %%
+%% em Engenharia Elétrica / Eletrônica de Potência.  %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% =====================================================
+%   Codificação, idioma e tipografia
+% =====================================================
+\usepackage[utf8]{inputenc}                         % Acentuação direta
+\usepackage[T1]{fontenc}                            % Codificação da fonte em 8 bits
+\usepackage{microtype}                              % Melhorias finas de justificação
+\usepackage{indentfirst}                            % Endenta o primeiro parágrafo de cada seção
+\usepackage{mathptmx}                               % Fonte Times New Roman para texto e matemática
+
+% =====================================================
+%   Matemática
+% =====================================================
+\usepackage{amsfonts, amssymb, amsmath}             % Símbolos e ambientes matemáticos
+\usepackage{amsgen}
+\usepackage{mathtools}                              % Extensões de amsmath (matrizes, alinhamentos)
+
+% Operadores em português (não há \sen, \tg, \cotg em LaTeX padrão)
+\DeclareMathOperator{\sen}{sen}
+\DeclareMathOperator{\tg}{tg}
+\DeclareMathOperator{\cotg}{cotg}
+\DeclareMathOperator{\arctg}{arctg}
+
+% =====================================================
+%   Figuras, tabelas e legendas
+%   (memoir/abntex2 já fornecem [H] para floats e
+%   ambiente subcaption via \newsubfloat — por isso
+%   NÃO carregamos float nem subcaption aqui.)
+% =====================================================
+\usepackage{graphicx}                               % Inserir figuras
+\graphicspath{{figuras/}{figuras/circuitos/}{figuras/formas-de-onda/}}
+\usepackage{booktabs}                               % Tabelas profissionais (\toprule etc.)
+\usepackage{multirow, array}                        % Múltiplas linhas e colunas em tabelas
+\usepackage[font=singlespacing,format=plain,justification=justified,skip=0pt,singlelinecheck=false]{caption}
+
+% =====================================================
+%   Unidades SI e notação numérica (siunitx)
+% =====================================================
+\usepackage{siunitx}
+\sisetup{
+	output-decimal-marker = {,},
+	per-mode               = symbol,
+	inter-unit-product     = \ensuremath{{}\cdot{}},
+	exponent-product       = \cdot,
+	separate-uncertainty   = true,
+	range-units            = single,
+	range-phrase           = {\ \text{a}\ },
+	list-units             = single,
+	list-pair-separator    = {\ \text{e}\ },
+	list-final-separator   = {\ \text{e}\ }
+}
+
+% =====================================================
+%   Diagramas de circuitos (CircuiTikZ)
+% =====================================================
+\usepackage{tikz}
+\usepackage[siunitx,european,straightvoltages,RPvoltages]{circuitikz}
+\usetikzlibrary{calc,arrows.meta,positioning,patterns,decorations.markings}
+\ctikzset{
+	bipoles/length=1.0cm,
+	diodes/scale=0.7,
+	transistors/scale=0.8,
+	resistors/scale=0.7,
+	capacitors/scale=0.7,
+	inductors/scale=0.7,
+	sources/scale=0.8
+}
+
+% =====================================================
+%   Gráficos vetoriais (pgfplots) — formas de onda,
+%   curvas de FP e THD em função de Po, etc.
+% =====================================================
+\usepackage{pgfplots}
+\pgfplotsset{
+	compat=1.18,
+	every axis/.append style={
+		font=\small,
+		line width=0.6pt,
+		axis lines=left,
+		grid=both,
+		major grid style={line width=.2pt,draw=gray!30},
+		minor grid style={line width=.1pt,draw=gray!15},
+		tick align=outside
+	},
+	every axis plot/.append style={line width=1pt}
+}
+\usepgfplotslibrary{groupplots,fillbetween}
+
+% =====================================================
+%   Listagens de código e algoritmos
+% =====================================================
+\usepackage{verbatim}
+\usepackage[svgnames,table]{xcolor}                 % Cores extras (Green, Blue, etc.)
+\usepackage{listings}
+\usepackage[portuguese,ruled,lined]{algorithm2e}
+\usepackage{algorithmic}
+
+% =====================================================
+%   Estrutura, formatação e auxiliares
+% =====================================================
+\usepackage{tocloft}                                % Personaliza o Sumário
+\usepackage{etoolbox}                               % Toolbox de comandos
+\usepackage[nogroupskip,nonumberlist]{glossaries}   % Lista de abreviaturas e siglas
+\usepackage[alf, abnt-emphasize=bf, recuo=0cm, abnt-etal-cite=2, abnt-etal-list=0, abnt-etal-text=it]{abntex2cite}
+\usepackage{lipsum}                                 % Texto fictício (Lorem Ipsum)
+\usepackage{appendix}                               % Geração de apêndices
+\usepackage{paracol}                                % Parágrafos sem identação
+\usepackage{pdfpages}                               % Inclui PDFs externos
+\usepackage{lib/ufctex}                             % Normas UFC
+
+% =====================================================
+%   Hyperref — já é carregado pelo abntex2; apenas
+%   complementamos a configuração para melhor SyncTeX
+%   e bookmarks bem ordenados no leitor de PDF.
+% =====================================================
+\hypersetup{
+	bookmarksopen        = true,
+	bookmarksnumbered    = true,
+	bookmarksopenlevel   = 1,
+	unicode              = true,
+	pdfencoding          = auto,
+	pdfstartview         = FitH,
+	breaklinks           = true,
+	colorlinks           = false
+}
+
+% =====================================================
+%   Glossário e índice
+% =====================================================
+\makeglossaries
+\makeindex

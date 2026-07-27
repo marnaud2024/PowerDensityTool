@@ -1,0 +1,384 @@
+================================================================================
+ POWER DENSITY TOOL - GUIA DO PROGRAMADOR
+ GPEC / UFC - SOBRAEP
+================================================================================
+
+Guia completo da PROGRAMACAO da ferramenta: estrutura de pastas, papel de cada
+arquivo, esquema da base de dados, estruturas de dados (variaveis) que fluem
+entre as camadas, arquitetura da interface, armadilhas conhecidas, como estender
+e como compilar para .exe. Escrito para qualquer programador que precise ler,
+manter ou evoluir o codigo.
+
+Ambiente: MATLAB (App Designer programatico, sem .mlapp). Testado com o MATLAB
+instalado em  C:\Program Files\MATLAB\bin\matlab.exe.
+
+================================================================================
+ 1. ESTRUTURA DE PASTAS
+================================================================================
+
+PowerDensityTool/
+  data/
+    Catalog.xlsx                 base de dados unica (varias abas - ver secao 3)
+    plecs_mosfets/
+      GeneSiC/   *.xml           modelos termicos PLECS GeneSiC
+      Wolfspeed/ *.xml           modelos termicos PLECS Wolfspeed
+    neural_net/  *.mat           pesos/bias da rede neural de perdas TDK
+  assets/
+    logo_*.png                   logos exibidos na aba About
+  src/
+    PowerDensityApp.m            classe principal (classdef) - monta a janela
+    build_installer.m            gera o .exe + instalador (1 comando)
+    pdpwr_demo.m                 smoke test rapido
+    +test/
+      regression.m              suite de regressao auto-contida (12 testes-ancora)
+    +pdpwr/
+      density.m                  combinacao 5-D + metricas (eficiencia/densidade)
+      +util/
+        load_catalog.m          le todas as abas do Catalog.xlsx -> struct
+        data_root.m             raiz dos dados (fonte OU ctfroot no .exe) *DEPLOY*
+        output_dir.m            pasta gravavel p/ os resultados (~/ no .exe) *DEPLOY*
+        save_table.m            grava uma tabela como .xlsx E .csv em output_dir
+        awg_props.m             propriedades do fio AWG (r, area, diametro)
+        plecs_load.m            carrega um XML PLECS -> handles Eon/Eoff/Vdrop
+        plecs_load_body.m       idem para diodo de corpo (body diode) Wolfspeed
+        load_neural_net.m       carrega o .mat da rede neural TDK
+      +loss/
+        mosfet.m                perdas do MOSFET (Eon/Eoff/Rds)
+        diode.m                 perdas do diodo (Rd*I^2 + Vto*Iavg)
+        core.m                  utilitario de perda de nucleo (Steinmetz base)
+        pcore_magmattec.m       interpolacao empirica de perda Magmattec
+      +design/
+        inductor.m              projeto iterativo do indutor
+        transformer.m           projeto do transformador
+        heatsink.m              dimensionamento do dissipador
+      +ui/
+        layout.m                constantes de layout (posicoes/tamanhos)
+        spinner_row.m           helper: monta label + uispinner e retorna o spinner
+        tab_mosfet.m            aba MOSFET (usada para MOSFET-I e MOSFET-II)
+        tab_diode.m             aba Diodo
+        tab_inductor.m          aba Indutor
+        tab_transformer.m       aba Transformador
+        tab_density.m           aba Power Density (combinacao final)
+  output/                        planilhas geradas pelo app (vazia no pacote)
+  build/
+    app/PowerDensityApp.exe      o executavel (roda no PC com Runtime)
+    setup/MyAppInstaller.exe     instalador (instala app + Runtime em outro PC)
+    READ_ME_FIRST.txt            guia dos arquivos de distribuicao
+  docs/                          esta documentacao (THEORY + DEVELOPER_GUIDE)
+  reference/                     planilhas-fonte dos coeficientes (Curve-Fit,
+                                 Full-Data Steinmetz) - de onde vieram as abas
+                                 Magnetics_CurveFit e Steinmetz do Catalog.xlsx
+  PowerDensityApp.prj            projeto do deploytool (opcional, especifico da maquina)
+
+NAMESPACES MATLAB: pastas que comecam com '+' sao PACOTES. Uma funcao em
+src/+pdpwr/+loss/mosfet.m e chamada como  pdpwr.loss.mosfet(...). A pasta '+test'
+e o pacote 'test' -> test.regression. (Importante: a pasta DEVE chamar '+test',
+nao 'test', senao o MATLAB nao resolve o namespace.)
+
+================================================================================
+ 2. FLUXO GERAL DE DADOS
+================================================================================
+
+   Catalog.xlsx
+        |  load_catalog
+        v
+   app.Catalog (struct com tabelas)
+        |
+   +-----------------------------------------------------------+
+   | Aba MOSFET/Diodo:                                          |
+   |   catalog -> +loss (perda por dispositivo)                 |
+   |           -> +design.heatsink (dissipador por dispositivo) |
+   |           -> hsAll (struct array: dispositivo+dissipador)  |
+   |           -> app.set_results('mosfetI'/'mosfetII'/'diode') |
+   | Aba Indutor/Trafo:                                         |
+   |   catalog -> +design.inductor/transformer (varre materiais)|
+   |           -> records (struct array de projetos validos)    |
+   |           -> app.set_results('inductor'/'transformer')     |
+   +-----------------------------------------------------------+
+        |
+   Aba Power Density:
+        app.get_results(...) de cada familia
+        -> pdpwr.density(comp, opts) -> res (eff/powerDens/loss/lossDens)
+        -> grafico + tabela + output/power_density_results.xlsx
+
+A classe PowerDensityApp guarda os resultados de cada aba em app.Results.<nome>
+via set_results/get_results. A aba Power Density le esse cache.
+
+================================================================================
+ 3. ESQUEMA DO Catalog.xlsx  (abas e colunas)
+================================================================================
+
+MOSFETs_PLECS
+   Manufacturer, PartNumber, Package, Vds_max_V, XML_File, Has_BodyDiode_XML,
+   Technology (= 'SiC'; reservado p/ 'Si'/'GaN' futuros - usado p/ cor do scatter)
+
+Diodes
+   Manufacturer, PartNumber, Package, Vrev_V, I_A,
+   Rd_a, Rd_b, Rd_c   (R_d(Tj) = a*Tj^2 + b*Tj + c)
+   Vto_a, Vto_b, Vto_c (V_TO(Tj) = a*Tj^2 + b*Tj + c)
+   PerLeg ('SIM'/'NAO'), Technology (= 'SiC')
+
+Heatsinks
+   Manufacturer, Profile, ProfileNum, Rth_natural_CW, Rth_forced_CW,
+   Height_mm, Width_mm, Convection_Notes (ex.: "5 m/s" p/ forcada)
+
+Cores_Magmattec
+   Material ('MMT002'/'MMT026'/'MMT034'/'MMT052'), Product, AL_nHesp2, Le_mm,
+   Ae_mm2, Ve_mm3, OD_mm, ID_mm, HT_mm
+
+Cores_Magnetics  (formato longo: 1 linha por nucleo+permeabilidade)
+   Material ('Kool Mu','MPP','High Flux','XFlux','Kool Mu MAX','Kool Mu Hf','Edge'),
+   PartNumber, Permeability, AL_nHesp2, Le_mm, Ae_mm2, Ve_mm3, OD_mm, ID_mm, HT_mm
+
+Magnetics_CurveFit  (coef. por material+permeabilidade, do Curve-Fit-Equation-Tool)
+   Material, Permeability,
+   mi_a, mi_b, mi_c   (roll-off de permeabilidade: mu% = 1/(a + b*H^c)*100)
+   P_a, P_b, P_c      (core-loss Steinmetz: Pv = P_a * B^P_b * f_kHz^P_c [mW/cc])
+
+Cores_Trafos  (ALL-MODELS normalizada: 1 linha por nucleo+material)
+   Material ('R','P','F','T','N27'..'N97','139'), PartNumber, AL, Le, Ae_mm2,
+   Ve_mm3, WaAc_cm4, OD_mm, ID_mm, Height_mm, Length_mm, LegLength_mm,
+   Manufacturer, Geometry ('R'|'EE')
+
+Steinmetz  (coeficientes de perda de nucleo do trafo, 13 materiais)
+   MaterialID, Material, alpha, beta, k, c1_T, c2_T, c3_T, k_iGSE
+   ORDEM CORRETA do coefficients.xlsx de origem: col1=k, col2=alpha, col3=beta.
+   Materiais TDK (N27..N97) ficam ZERADOS aqui (usam rede neural). '139' usa os
+   coeficientes 'magmattec' da linha 13. A coluna Material e TEXTO (o '139' como
+   numero quebrava strcmp).
+
+AWG_Table
+   AWG, r_ohm_m, A_cm2, D_cm  (resistencia/area/diametro por bitola)
+
+================================================================================
+ 4. ESTRUTURAS DE DADOS (variaveis-chave)
+================================================================================
+
+op  (condicoes de operacao do semicondutor - entrada de +loss):
+   MOSFET: .Vd .Tj .Rg .Vgson .I_RMS .I_on .I_off .fs .softSwitching
+   Diodo : .Tj .I_RMS .I_avg
+
+D  (struct de projeto do magnetico - entrada de +design):
+   Indutor: .Vd .ILmed .DeltaIL .ILef .L .IL_max .J .fs .r_awg .Aawg .Dextawg
+            .temp_ambiente .DeltaTmax .kumin .kumax .MaxLoss .MaxVol
+   Trafo  : .Vd .Vo .n .Ipef .Isef .fs .Ts .T .D .D2 .Rfio .Afio .Dfio .Rcfio
+            .kumin .kumax .DeltaTmax .Bm .J .Pnucleomax .Vmax
+            .kFaraday  (const. de Faraday em Np=Vd*1e4/(k*Bm*fs*Ae); campo do usuario, default 9)
+
+core  (struct do nucleo - entrada de +design):
+   Indutor: .id .mi_rel .le_mm .Ae_mm2 .Vol_mm3 .OD_mm .ID_mm .HT_mm .stacks
+            (Magnetics: .mi_a .mi_b .mi_c .P_a .P_b .P_c)
+            (Magmattec: .AL0_nHesp2 .pcore_fn)
+   Trafo  : .partNumber .manufacturer .geometry .parallel .Ve_cm3 .Ae_cm2
+            .Ap_cm4 .OD_cm .ID_cm .H_cm .Length_cm .LegLength_cm
+
+records  (saida das abas MOSFET/Diodo, antes do dissipador):
+   .PartNumber .Producer .Package .Technology .Vmax [.Imax] .P_total/.P_cond
+
+hsAll  (struct array dispositivo+dissipador - publicado p/ a densidade):
+   .PartNumber .Producer .Technology .Heatsink .HeatsinkProducer .PowerW
+   .Length_mm .Volume_cm3 .BlockVolt_V/.MaxVolt_V .Temp_Elev_C .Rth_C_W
+   .Package .Method ('Natural'/'Forced') .AirSpeed
+   .DevicesPerHS (Q)  .GroupLossW (= PowerW * Q -> perda do CONJUNTO no dissipador)
+
+proj  (saida de +design.inductor/transformer - um projeto):
+   Indutor: .ID .mi .Ptotal .Pcore .Pcu .Vol .Ku .N .Nparal .DeltaT .Bp .fs ...
+            (.N = NaN e .reason setado quando rejeitado)
+   Trafo  : .Material .Size .Geometry .ParallelCores .Np .Ns .PnucleoSE .Pcond
+            .Ptrafo .DeltaT .VolTotal .Ku .Bm ...  (.Np = NaN quando rejeitado)
+
+comp  (entrada de pdpwr.density): struct com .mosfetI .mosfetII .diode .inductor
+   .transformer (cada uma uma tabela Identifier/PowerW/Volume_cm3) e
+   .<familia>_mult (multiplicador = numero de unidades/bracos).
+
+res  (saida de pdpwr.density):
+   .eff .powerDens .loss .lossDens .vol .idx .detail (.M1/.M2/.D/.L/.T) .metric
+
+================================================================================
+ 5. ARQUITETURA DA INTERFACE (+ui)
+================================================================================
+
+PowerDensityApp.m (classdef):
+   - propriedades publicas: UIFigure, TabGroup, Catalog
+   - privadas: handles de cada aba (struct ctx) + Results (cache por familia)
+   - construtor: cria uifigure invisivel, carrega o catalogo, monta 7 abas
+     (MOSFET-I, MOSFET-II, Diodo, Indutor, Trafo, Power Density, About) e mostra.
+   - set_results(name, value) / get_results(name): cache compartilhado.
+
+Cada tab_*.m e uma FUNCAO que monta a aba e retorna um struct ctx (handles dos
+componentes). Padrao comum:
+   1. monta o painel de parametros (spinners via pdpwr.ui.spinner_row);
+   2. monta arvores de filtro (uitree checkbox) ou painel de status;
+   3. monta o grafico (uiaxes) e a tabela (uitable) com cabecalhos visiveis;
+   4. monta botoes "Calculate" e "Filter / Plot";
+   5. SO ENTAO atribui os callbacks (ButtonPushedFcn) - ver ARMADILHA #1.
+
+Funcoes locais (privadas a cada arquivo, prefixo i_):
+   i_fieldList        define spinners (name/label/default/limits/step)
+   i_on_calculate     callback do botao Calculate
+   i_on_filter        callback do botao Filter / Plot
+   i_drawScatter      desenha o grafico (com dataTips ricos)
+   i_fillTable        preenche a uitable
+   i_collectChecked   le os nos marcados nas arvores
+   i_root             raiz do projeto (sobe 4 niveis a partir do arquivo)
+
+Convencao de eixos (todas as abas individuais): X = Volume, Y = Perdas; o melhor
+ponto e o mais proximo da ORIGEM. Grafico GRANDE (400x470), tabela COMPACTA
+embaixo (e so visualizacao secundaria).
+
+Cor do scatter (uma cor por grupo; legenda = nome amigavel via i_matLabel):
+   - MOSFET/Diodo: por MATERIAL (campo Technology; hoje so 'SiC').
+   - Indutor: por MaterialTag -> 'Kool Mu', 'MMT 052', etc.
+   - Trafo: por Material -> 'Magnetics R/P/F/T', 'TDK N87', 'Magmattec 139'
+     (os codigos crus R/P/F/T ficavam cripticos na legenda).
+
+Datatips COMPACTOS: cada ponto mostra so o essencial com rotulos curtos
+(Vol[cm3], Loss[W], Part/Mat/Pkg/HS/Cool, etc.) para a caixa caber dentro do
+grafico; o detalhe completo fica na TABELA abaixo.
+
+Indutor/Trafo - dropdown "Show" (ctx.showDropdown):
+   - "All designs" (padrao): plota TODOS os designs validos via i_applyShow
+     (cap de 15000 pontos, mantendo os de menor perda, p/ nao travar).
+   - "Best per core": so o melhor design de cada nucleo distinto (i_bestPerCore).
+
+Aba Power Density:
+   - Eixos: EFICIENCIA no X, densidade no Y (orientacao do app2 original;
+     rerotulados por i_apply_mode). Vista padrao "Loss / Vol" = Y e Loss/Vol
+     (reproduz o original); "P_out / Vol" = Y e Pout/Vol.
+     Eficiencia = (P_out - perdas)/P_out.
+   - Datatip do grafico: SO "Combo #" (= numero da linha) + as 4 metricas. A
+     tabela tem a coluna "#" e, em cada celula de componente, TODOS os detalhes
+     construtivos (i_identifier rico: produtor, encapsulamento, dissipador+
+     perfil+comprimento+Rth+ventilacao, Np/Ns/Bm/Ku/dT, mu/N/Nparal, volume,
+     perdas). Ponto i == linha i (scatter de serie unica).
+   - Dropdown "Combinations" (ctx.comboDropdown): "Spread" (10 espalhados/
+     familia), "Top 10 best", "All" (todos; opts.MaxResults=1e6 + uiconfirm).
+
+================================================================================
+ 6. ARMADILHAS CONHECIDAS (leia antes de mexer!)
+================================================================================
+
+#1 CLOSURES CAPTURAM POR VALOR. As abas montam ctx incrementalmente. Se voce
+   setar ButtonPushedFcn inline na criacao do botao, o callback recebe um ctx
+   INCOMPLETO (faltam campos adicionados depois). REGRA: crie TODOS os
+   componentes, popule ctx inteiro, e SO ENTAO atribua
+   ctx.btn.ButtonPushedFcn = @(~,~) i_on_calculate(app, ctx). Sintoma do erro:
+   "Unrecognized field tableCols", tabela vazia, botao Filter desabilitado.
+
+#2 isvalid(uicontrol) da "Incorrect number or types of inputs" em alguns
+   objetos UI desta versao. NAO use isvalid em componentes; envolva
+   close(pd)/.Enable/.Value/.Message em try/catch.
+
+#3 GSE DO TRAFO: integrais lentas + warnings de singularidade floodam o Command
+   Window e travam. GSE so no detalhamento (gseEnabled=false na varredura);
+   suprima 'MATLAB:integral:MinStepSize' e ':NonFiniteValue'; try/catch em volta.
+
+#4 EXPLOSAO COMBINATORIA trava a UI no FINAL (uitable/scatter congelam com 30k+
+   pontos). Indutor/trafo: mostram o MELHOR design de CADA nucleo distinto
+   (i_bestPerCore, chave Material|ID|Stacks). Densidade: cada familia capada a
+   top-10 por perda (10^5 sets); pdpwr.density pre-aloca array do tamanho do
+   produto -> CAP alto estoura memoria.
+
+#5 NUCLEOS COM NaN em geometria -> validar com i_isBadCore antes do loop.
+
+#6 STEINMETZ - ordem dos coeficientes: k=col1, alpha=col2, beta=col3. Trocar
+   alpha<->k gera fs^alpha com alpha errado -> perdas ~1e16 -> trafo rejeita
+   tudo. (Guardado pelo teste de regressao 8.)
+
+#7 MATERIAL '139' como NUMERO no Excel quebra strcmp(table.Material,'139').
+   Solucao dupla: coluna Material como TEXTO + strcmp(string(...),material).
+
+#8 CURVE-FIT MAGNETICS: os blocos esquerdo (roll-off) e direito (core-loss) do
+   Curve-Fit-Equation-Tool NAO sao alinhados linha-a-linha (Kool Mu Hf direito
+   pula mu90). Parsear cada bloco em separado e juntar por (material, perm).
+   Nomes usam caracteres especiais (mu, f script) -> normalizar para 'u'/'f'.
+   Usar apenas os blocos de TOROIDE (linhas ~9-81), ignorar variantes
+   E-core/EQ&LP.
+
+#9 ABA TEST deve se chamar '+test' (pacote), senao 'test.regression' nao resolve.
+
+#10 CAMINHOS NO .EXE (deployment): NUNCA use mfilename('fullpath') para achar
+   data/output - funciona no MATLAB mas QUEBRA no .exe (os arquivos ficam sob
+   ctfroot). SEMPRE use pdpwr.util.data_root() (le catalogo/XML/rede neural/logo)
+   e pdpwr.util.output_dir() (grava resultados; ctfroot e read-only -> grava em
+   ~/PowerDensityTool/output). data_root faz busca recursiva por Catalog.xlsx
+   como fallback (mcc espelha o caminho absoluto sob ctfroot). Sintoma se
+   esquecer: no .exe da "Figure handle 'Visible' value must be 'on'" (o catalogo
+   nao carrega e o uialert falha em figura invisivel).
+
+================================================================================
+ 7. COMO ESTENDER
+================================================================================
+
+Adicionar um novo MOSFET/Diodo:
+   - coloque o XML PLECS em data/plecs_mosfets/<fabricante>/ (MOSFET);
+   - adicione uma linha na aba MOSFETs_PLECS ou Diodes do Catalog.xlsx
+     (inclua a coluna Technology: 'SiC', 'Si' ou 'GaN' - o scatter ja colore
+      automaticamente por material).
+
+Adicionar um novo dissipador:
+   - linha na aba Heatsinks com Rth natural/forcado, altura, largura e notas.
+
+Adicionar um material magnetico:
+   - Indutor: linhas em Cores_Magnetics (ou Cores_Magmattec) e os coeficientes
+     em Magnetics_CurveFit (mi_a..c e P_a..c por permeabilidade);
+   - Trafo: linhas em Cores_Trafos + coeficientes em Steinmetz (ou rede neural
+     para TDK).
+
+Adicionar um spinner numa aba: edite i_fieldList daquela aba (name/label/
+default/limits/step). O loop de construcao cria o uispinner automaticamente.
+
+================================================================================
+ 8. VALIDACAO / TESTES
+================================================================================
+
+Suite de regressao (auto-contida, 12 testes-ancora):
+   cd src
+   matlab -batch "test.regression"
+   Esperado: "=== Total failures: 0 ===". Cobre: carga do catalogo, AWG, Eon
+   GeneSiC/Wolfspeed, Pcond do diodo, dispatch Magmattec por material, Bpk com
+   le, mapeamento Steinmetz k/alpha, diferenciacao curve-fit por material.
+
+Construcao headless da interface (pega erros de montagem sem abrir a janela):
+   cd src
+   matlab -batch "app=PowerDensityApp; drawnow; disp('OK'); delete(app.UIFigure)"
+
+Smoke test rapido: src/pdpwr_demo.m.
+
+================================================================================
+ 9. COMPILACAO PARA .EXE (standalone) - exige MATLAB Compiler
+================================================================================
+
+A ferramenta foi reescrita SEM evalin/run em workspace base (o app2 original
+usava evalin('base','run(...)'), o que inviabilizava standalone). Todo calculo
+esta em +pdpwr e os caminhos usam pdpwr.util.data_root()/output_dir() (funcionam
+no .exe - ver armadilha #10). Ambiente testado: MATLAB R2023b, Windows.
+Confira a licenca: license('test','Compiler') deve dar 1.
+
+RECOMENDADO - um comando (gera o .exe E o instalador):
+   cd src
+   build_installer            % instalador 'web' (pequeno; baixa o Runtime na
+                              %   instalacao) -> USE ESTE
+   build_installer('included')% instalador OFFLINE com Runtime embutido (~2-4 GB;
+                              %   o download e lento e costuma travar - evite)
+   Saida:
+     build/app/PowerDensityApp.exe    o executavel (roda no PC com Runtime)
+     build/setup/MyAppInstaller.exe   instalador para outro PC
+
+Equivalente por baixo (o que o build_installer chama):
+   compiler.build.standaloneApplication('PowerDensityApp.m', ...
+       'AdditionalFiles', {+pdpwr, +test, ../data, ../assets}, 'OutputDir', app)
+   compiler.package.installer(res, 'RuntimeDelivery','web', 'OutputDir', setup)
+
+Ou o classico mcc (so o .exe, sem instalador):
+   mcc -m PowerDensityApp.m -a +pdpwr -a +test -a ../data -a ../assets -d ../build/app
+
+WINDOWS-ONLY: o .exe e o Runtime sao especificos de Windows. Para Mac/Linux,
+compilar NAQUELE SO (o codigo-fonte .m roda em qualquer SO com MATLAB).
+
+AO ADICIONAR novos arquivos de dados: inclua-os com -a (ou em AdditionalFiles) E
+acesse-os via pdpwr.util.data_root() - nunca caminho absoluto nem mfilename.
+
+================================================================================
+ FIM - DEVELOPER_GUIDE.txt
+================================================================================

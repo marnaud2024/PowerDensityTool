@@ -1,0 +1,504 @@
+% !TEX program = pdflatex
+% !TEX root = teoria_densidade.tex
+% !TEX spellcheck = pt_BR
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%   Relatorio Tecnico - Power Density Tool           %%
+%%   (usa a MESMA classe/preambulo do template UFC)   %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[
+	a4paper, 12pt,
+	chapter=TITLE, section=Title, subsection=Title,
+	oneside, english, brazil, fleqn
+]{abntex2}
+
+\input{lib/preambulo}
+\setlength{\mathindent}{0pt}
+
+\trabalhoacademico{posgraduacao}
+\ehqualificacao{nao}
+\removerbordasdohyperlink{sim}
+\cordohyperlink{nao}
+
+\ies{Universidade Federal do Ceará}
+\iessigla{UFC}
+\centro{Centro de Tecnologia}
+\departamento{Departamento de Engenharia Elétrica}
+\programamestrado{Grupo de Processamento de Energia e Controle (GPEC)}
+\disciplina{}          % vazio: a capa NAO imprime "Disciplina:" (e um relatorio)
+\disciplinacodigo{}
+\professor{}
+\professorfeminino{nao}
+
+\autor{João Rodrigo Arnaud da Cruz\\Adolfo Araújo}
+\titulo{Ferramenta de Densidade de Potência para Conversores CC--CC Isolados: Relatório Técnico dos Modelos de Perdas, Magnéticos e Dissipadores, com Dedução das Equações}
+\data{2026}
+\local{Fortaleza}
+
+\begin{document}
+	\imprimircapa
+
+	\begin{resumo}
+		Este relatório técnico documenta, de forma completa e rastreável, a
+		fundamentação teórica da \textbf{Ferramenta de Densidade de Potência}
+		(GPEC/UFC), que estima a densidade de potência (\si{\watt\per\liter}) e o
+		rendimento (\si{\percent}) de um conversor CC--CC isolado varrendo
+		combinações de \textbf{semicondutores SiC} (MOSFET e diodo),
+		\textbf{indutores}, \textbf{transformadores} e \textbf{dissipadores}.
+		Para cada família apresentam-se o modelo de perdas e o procedimento de
+		dimensionamento, com a \textbf{dedução de cada equação a partir das leis
+		físicas} (Faraday, Ampère, Ohm térmico, Joule) e a \textbf{justificativa
+		de cada constante}. Detalham-se a interpolação dos modelos de comutação
+		PLECS, o modelo linear por partes do diodo, a analogia térmica do
+		dissipador com seus dois casos-limite, o algoritmo iterativo de projeto
+		do indutor com o \emph{roll-off} de permeabilidade, a lei de Faraday
+		generalizada por uma constante de forma de onda~$k$ ajustável, as perdas
+		de núcleo por Steinmetz e por rede neural (com normalização), o Steinmetz
+		generalizado (GSE) e a combinação multiplicativa que produz o diagrama
+		eficiência--densidade. Fecha-se com os parâmetros do protótipo de
+		referência. O objetivo é permitir que a comunidade científica
+		\textbf{use, verifique e aprimore} o algoritmo.
+		\palavraschave{Densidade de potência. Conversor CC--CC isolado. SiC.
+		Lei de Faraday. Steinmetz. Dissipador. Rendimento. Código aberto.}
+	\end{resumo}
+
+	\pdfbookmark[0]{\contentsname}{toc}
+	\imprimirsumario
+
+	\textual
+
+%=====================================================================
+\chapter{Introdução, metodologia e notação}
+%=====================================================================
+A \emph{densidade de potência} mede quanta potência um conversor processa por
+unidade de volume; quanto maior, mais compacto e leve o conversor. A ferramenta
+avalia um conversor CC--CC isolado composto por cinco famílias de componentes
+--- dois conjuntos de MOSFETs, diodos, indutor de filtro e transformador --- mais
+os dissipadores que dão suporte térmico aos semicondutores.
+
+\section{Metodologia de cálculo}
+O procedimento tem três etapas, aplicadas a cada família e depois ao conjunto:
+\begin{enumerate}
+	\item \textbf{Varredura.} Para cada componente do catálogo, e para cada ponto
+	de operação (frequência, densidade de fluxo, densidade de corrente etc.),
+	calculam-se as perdas e o volume, rejeitando os projetos que violam limites
+	térmicos, de saturação ou de janela.
+	\item \textbf{Filtragem.} O usuário seleciona subconjuntos (material,
+	fabricante, encapsulamento, tipo de convecção) e a interface reduz o conjunto
+	aos projetos de interesse.
+	\item \textbf{Combinação.} Escolhido um projeto de cada família, somam-se
+	perdas e volumes (Capítulo~\ref{cap:comb}) e calculam-se o rendimento e a
+	densidade do conversor completo.
+\end{enumerate}
+Em cada família, o projeto ótimo é o par $(V,\,P_{\mathrm{perdas}})$ mais próximo
+da \textbf{origem} (simultaneamente menor volume e menor perda).
+
+\section{Figuras de mérito}
+A \textbf{densidade de potência} é definida por
+\begin{equation}
+	\rho \;=\; \frac{P_{\mathrm{out}}}{V_{\mathrm{total}}}\qquad[\si{\watt\per\liter}].
+	\label{eq:rho}
+\end{equation}
+\textit{Dedução do rendimento.} Por definição, $\eta=P_{\mathrm{out}}/P_{\mathrm{in}}$.
+Pela conservação de energia, toda a potência de entrada ou vira saída ou vira
+perda: $P_{\mathrm{in}}=P_{\mathrm{out}}+P_{\mathrm{perdas}}$. Tratando
+$P_{\mathrm{out}}$ como a potência de referência do projeto,
+\begin{equation}
+	\eta=\frac{P_{\mathrm{out}}}{P_{\mathrm{in}}}
+	    =\frac{P_{\mathrm{out}}}{P_{\mathrm{out}}+P_{\mathrm{perdas}}}
+	    =\frac{P_{\mathrm{out}}-P_{\mathrm{perdas}}}{P_{\mathrm{out}}}\times100\%,
+	\label{eq:eta}
+\end{equation}
+sendo a última forma a adotada na ferramenta (idêntica à do aplicativo original).
+Como $\eta$ contém $P_{\mathrm{out}}$, ela depende da potência nominal; uma
+análise por perdas absolutas (\si{\watt}) ou por densidade de perdas
+(\si{\watt\per\liter}) independe dela.
+
+\section{Notação}
+$V_d$: tensão CC aplicada ao componente; $f_s$: frequência de comutação;
+$T_j,\,T_{amb}$: temperaturas de junção e ambiente; $I_{\mathrm{ef}},\,I_{\mathrm{med}}$:
+correntes eficaz e média; $A_e$: área efetiva do núcleo; $\ell_e$: comprimento do
+caminho magnético; $V_e$: volume efetivo; $B_m$: densidade de fluxo de pico; $N$:
+número de espiras; $\mu_0=4\pi\times10^{-7}\,\si{\henry\per\meter}$.
+
+%=====================================================================
+\chapter{Perdas nos semicondutores}
+%=====================================================================
+Os semicondutores do catálogo são de \textbf{carbeto de silício} (SiC), de
+Wolfspeed e GeneSiC. Perdas em SiC dividem-se em comutação e condução.
+
+\section{MOSFET: comutação}
+\textit{Origem física.} Durante uma transição, tensão e corrente do dispositivo
+se sobrepõem por um curto intervalo; a energia dissipada é a integral da potência
+instantânea sobre a transição:
+\begin{equation}
+	E_{sw}=\int_{\text{transição}} v_{ds}(t)\,i_d(t)\,dt\quad[\si{\joule}].
+	\label{eq:esw_int}
+\end{equation}
+Como essa integral depende de muitos fatores não lineares, adota-se a solução da
+indústria: usam-se \textbf{modelos térmicos PLECS} (tabelas dos
+\emph{datasheets}), interpolados como função da corrente comutada~$I$, da tensão
+de bloqueio~$V_{ds}$, da temperatura de junção~$T_j$ e do resistor de porta~$R_g$:
+\begin{equation}
+	E_{on}=f_{on}(I_{on},V_{ds},T_j,R_g),\qquad
+	E_{off}=f_{off}(I_{off},V_{ds},T_j,R_g).
+	\label{eq:eon}
+\end{equation}
+\textit{Dependências.} A energia cresce aproximadamente com $V_{ds}\,I$ (área do
+retângulo tensão--corrente) e com $R_g$ (que retarda $dv/dt$ e $di/dt$, alongando
+a sobreposição); cresce ainda com $T_j$ (mobilidade e cauda de corrente).
+\textit{Dedução da potência.} Se cada evento dissipa $E$ e ocorre uma vez por
+período $T_s=1/f_s$, a potência média é a energia por evento vezes a taxa de
+eventos:
+\begin{equation}
+	P_{on}=\frac{E_{on}}{T_s}=f_s\,E_{on},\qquad P_{off}=f_s\,E_{off}.
+	\label{eq:pon}
+\end{equation}
+Sob \emph{Zero-Voltage Switching} (ZVS) a entrada comuta com $v_{ds}=0$, anulando
+a integral~\eqref{eq:esw_int} de entrada: $P_{on}=0$.
+
+\section{MOSFET: condução}
+\textit{Dedução.} No estado ligado o canal SiC comporta-se como resistência,
+$v=R_{ds,on}\,i$. A potência instantânea é $p(t)=v\,i=R_{ds,on}\,i^2$ e a média em
+um período vale
+\begin{equation}
+	P_{cond}=\frac{1}{T_s}\!\int_0^{T_s}\!R_{ds,on}\,i^2\,dt
+	=R_{ds,on}\,\langle i^2\rangle=R_{ds,on}\,I_{\mathrm{ef}}^{2},
+	\label{eq:pcondm}
+\end{equation}
+pois, por definição, $I_{\mathrm{ef}}^2=\langle i^2\rangle$. A resistência
+equivalente é estimada pela média de $V_{drop}/i$ nos instantes de ligar e
+desligar --- como $V_{drop}=i\,R_{ds}$, a razão recupera $R_{ds}$:
+\begin{equation}
+	R_{ds,on}=\tfrac12\!\left[\frac{V_{drop}(I_{on},V_{gs},T_j)}{I_{on}}
+	+\frac{V_{drop}(I_{off},V_{gs},T_j)}{I_{off}}\right].
+	\label{eq:rds}
+\end{equation}
+A aproximação é válida porque, no SiC, a característica $v(i)$ do estado ligado é
+quase linear. A perda total do MOSFET é $P_{\mathrm{total}}=P_{on}+P_{off}+P_{cond}$.
+
+\section{Diodo SiC Schottky}
+\textit{Modelo.} A curva direta de um diodo, exponencial em pequena escala, é
+aproximada por um modelo linear por partes: uma fonte de limiar $V_{TO}$ em série
+com uma resistência dinâmica $R_d$, ambas quadráticas na temperatura:
+\begin{align}
+	R_d(T_j)  &= R_{d,a}\,T_j^{2}+R_{d,b}\,T_j+R_{d,c},&
+	V_{TO}(T_j)&= V_{TO,a}\,T_j^{2}+V_{TO,b}\,T_j+V_{TO,c}.
+	\label{eq:rdvto}
+\end{align}
+\textit{Dedução da perda.} Com $v(i)=V_{TO}+R_d\,i$, a potência instantânea é
+$p=v\,i=V_{TO}\,i+R_d\,i^2$; tomando a média e usando
+$\langle i\rangle=I_{\mathrm{med}}$ e $\langle i^2\rangle=I_{\mathrm{ef}}^2$:
+\begin{equation}
+	P_{cond}=V_{TO}\,I_{\mathrm{med}}+R_d\,I_{\mathrm{ef}}^{2}.
+	\label{eq:pcondd}
+\end{equation}
+Note que a parcela de limiar pondera a corrente \emph{média} e a resistiva a
+\emph{eficaz}, refletindo as respectivas leis $p=V i$ e $p=R i^2$. O diodo
+Schottky de SiC \textbf{não} tem carga de recuperação reversa relevante
+($Q_{rr}\approx0$), logo não há parcela de comutação. Se o encapsulamento contém
+dois \emph{dies} em meia-ponte, a corrente se divide e
+$P_{cond}=2[R_d(I_{\mathrm{ef}}/2)^2+V_{TO}(I_{\mathrm{med}}/2)]$.
+
+%=====================================================================
+\chapter{Dimensionamento do dissipador}
+%=====================================================================
+\textit{Analogia térmica.} Em regime permanente, a condução de calor obedece a
+uma lei análoga à de Ohm: o fluxo de calor $P$ (\si{\watt}) faz o papel da
+corrente, a diferença de temperatura $\Delta T$ o da tensão, e a resistência
+térmica $R_\theta$ (\si{\degreeCelsius\per\watt}) o da resistência elétrica, com
+$\Delta T=P\,R_\theta$. As três interfaces em série somam-se:
+\begin{equation}
+	T_j-T_{amb}=P_{\mathrm{loss}}\,(R_{jc}+R_{chs}+R_{ha})
+	\;\Rightarrow\;
+	T_j = T_{amb}+P_{\mathrm{loss}}\,(R_{jc}+R_{chs}+R_{ha}).
+	\label{eq:chain}
+\end{equation}
+Usam-se $R_{jc}=\SI{1}{\degreeCelsius\per\watt}$ e
+$R_{chs}=\SI{0.5}{\degreeCelsius\per\watt}$ como aproximações genéricas de
+TO-247/SOT-227 (poderiam vir do \emph{datasheet}). Isolando a máxima temperatura
+admissível do dissipador pelo lado do dispositivo:
+\begin{equation}
+	T_{hs,\mathrm{dev}} = T_j - P_{\mathrm{loss}}\,(R_{jc}+R_{chs}).
+	\label{eq:ths}
+\end{equation}
+\textit{Dedução da resistência necessária.} Com $Q$ dispositivos por dissipador,
+a potência total nele é $Q\,P_{\mathrm{loss}}$; a queda dissipador--ambiente é
+$Q\,P_{\mathrm{loss}}\,R_{ha}$. Igualando à elevação disponível surgem dois
+\textbf{casos-limite}, e adota-se o mais restritivo:
+\begin{equation}
+	R_{ha,\mathrm{req}}=\min\!\left\{
+	\frac{T_{hs,\mathrm{dev}}-T_{amb}}{Q\,P_{\mathrm{loss}}}\ \text{(limite da junção)},\;
+	\frac{\Delta T_{\mathrm{adm}}}{Q\,P_{\mathrm{loss}}}\ \text{(limite do dissipador)}
+	\right\},
+	\label{eq:rhareq}
+\end{equation}
+onde $\Delta T_{\mathrm{adm}}=T_{hs,\max}-T_{amb}$. \textit{Comprimento.} A
+relação comprimento~$\times$~resistência dos perfis não é analítica; ajusta-se
+empiricamente a curva do catálogo HSDissipadores, isolando o comprimento, com
+$\mathrm{coef}=R_{ha,\mathrm{req}}/R_{ha}$:
+\begin{equation}
+	L = \frac{64{,}1030}{\mathrm{coef}-0{,}4258}+14{,}754\quad[\si{\milli\meter}].
+	\label{eq:Lfit}
+\end{equation}
+As três constantes são os parâmetros dessa regressão (mantidos idênticos ao
+projeto original). O volume é o produto das três dimensões:
+\begin{equation}
+	V_{hs}=\frac{L}{10}\cdot\frac{H}{10}\cdot\frac{W}{10}\quad[\si{\cubic\centi\meter}].
+	\label{eq:vhs}
+\end{equation}
+É esse volume que entra na densidade, pois o do semicondutor é desprezível.
+
+%=====================================================================
+\chapter{Projeto do indutor}
+%=====================================================================
+Indutor de filtro toroidal com núcleo de pó. O projeto é iterativo porque a
+permeabilidade cai com a polarização CC.
+
+\section{Indutância e corrente eficaz}
+\textit{Dedução de $L$.} De $v=L\,di/dt$, integrando no meio-período em que a
+tensão média $V_d$ é aplicada, a excursão de corrente é $\Delta I_L$. Para razão
+cíclica $D=0{,}5$ (pior caso do \emph{ripple}), o resultado padrão do conversor
+comutado é $\Delta I_L=V_d\,D(1-D)/(Lf_s)=V_d/(4Lf_s)$; isolando $L$:
+\begin{equation}
+	L=\frac{V_d}{4\,f_s\,\Delta I_L}.
+	\label{eq:Lind}
+\end{equation}
+\textit{Dedução de $I_{L,\mathrm{ef}}$.} A corrente é $i(t)=I_{L,\mathrm{med}}+i_{\sim}(t)$,
+com $i_{\sim}$ triangular de amplitude de pico $\Delta I_L/2$ e média nula. Como a
+componente CC e a alternada são ortogonais, $\langle i^2\rangle=I_{L,\mathrm{med}}^2+\langle i_{\sim}^2\rangle$.
+O valor quadrático médio de uma triangular simétrica de pico $\hat a$ é
+$\langle i_\sim^2\rangle=\hat a^2/3$; com $\hat a=\Delta I_L/2$ resulta
+$\langle i_\sim^2\rangle=\Delta I_L^2/12$, logo
+\begin{equation}
+	I_{L,\mathrm{ef}}=\sqrt{I_{L,\mathrm{med}}^2+\tfrac{\Delta I_L^2}{12}}
+	=I_{L,\mathrm{med}}\sqrt{1+\tfrac{1}{12}\!\left(\tfrac{\Delta I_L}{I_{L,\mathrm{med}}}\right)^{2}}.
+	\label{eq:ILef}
+\end{equation}
+
+\section{Espiras e \emph{roll-off} de permeabilidade}
+\textit{Dedução de $A_{L0}$.} Um circuito magnético de comprimento $\ell_e$, área
+$A_e$ e permeabilidade $\mu_0\mu_{\mathrm{rel}}$ tem relutância
+$\mathcal{R}=\ell_e/(\mu_0\mu_{\mathrm{rel}}A_e)$. A indutância de $N$ espiras é
+$L=N^2/\mathcal{R}$; a indutância por espira ao quadrado é
+\begin{equation}
+	A_{L0}=\frac{L}{N^2}=\mu_{\mathrm{rel}}\,\mu_0\,\frac{A_e}{\ell_e},\qquad
+	N=\bigl\lceil\sqrt{L/A_L}\bigr\rceil.
+	\label{eq:al0}
+\end{equation}
+\textit{Dedução do campo.} Pela lei de Ampère, $\oint\!H\,dl=N I\Rightarrow H\ell_e=NI$,
+logo $H=NI/\ell_e$; convertendo à unidade prática (oersted, $\ell_e$ em mm) pela
+relação CGS,
+\begin{equation}
+	H=4\pi\,\frac{N}{\ell_e}\,I_{L,\mathrm{med}}\quad[\mathrm{Oe}].
+	\label{eq:H}
+\end{equation}
+\textit{Algoritmo iterativo.} A permeabilidade efetiva decresce com $H$ segundo o
+ajuste (empírico, por material e permeabilidade) do \emph{roll-off}:
+\begin{equation}
+	\mu\%(H)=\frac{1}{a+b\,H^{c}}\times100\ \in[0,100].
+	\label{eq:rolloff}
+\end{equation}
+Como $H$ depende de $N$ e $N$ depende de $A_L=A_{L0}\,\mu\%/100$, resolve-se por
+ponto fixo:
+\begin{algorithmic}[1]
+	\STATE $A_L\leftarrow A_{L0}$;\quad $N\leftarrow\lceil\sqrt{L/A_L}\rceil$
+	\REPEAT
+		\STATE $H\leftarrow 4\pi\,(N/\ell_e)\,I_{L,\mathrm{med}}$
+		\STATE $\mu\%\leftarrow$ \eqref{eq:rolloff};\quad se $\mu\%<30$: \textbf{rejeita} (saturado)
+		\STATE $A_L\leftarrow A_{L0}\,\mu\%/100$;\quad $N\leftarrow\lceil\sqrt{L/A_L}\rceil$
+	\UNTIL{$N$ estabiliza}
+\end{algorithmic}
+
+\section{Densidade de fluxo e perdas}
+\textit{Dedução de $B_{pk}$.} O fluxo enlaçado é $\lambda=N\Phi=L\,I$ e o fluxo
+$\Phi=B\,A_e$; logo $B=\Phi/A_e=\lambda/(N A_e)$:
+\begin{equation}
+	B_{pk}=\frac{L\,I}{N\,A_e},\qquad I=I_{L,\mathrm{med}}\pm\tfrac{\Delta I_L}{2}.
+	\label{eq:bpk}
+\end{equation}
+Esta identidade usa $L$ e o inteiro $N$ já obtidos, sem recorrer à permeabilidade
+(que divergiria). O aplicativo legado usava o comprimento médio de espira no lugar
+de $\ell_e$ e omitia $N$, subestimando $B$ (e as perdas) em \numrange{4}{5}~vezes.
+
+\textit{Perda de núcleo (Steinmetz).} A perda volumétrica de um material
+magnético segue empiricamente uma lei de potência na frequência e no fluxo (lei
+de Steinmetz), com expoentes ajustados por material:
+\begin{equation}
+	P_v = P_a\,B_{pk}^{\,P_b}\,\!\left(\frac{f_s}{1000}\right)^{\!P_c}\ [\si{\milli\watt\per\cubic\centi\meter}],
+	\quad P_{\mathrm{core}}=P_v\cdot10^{-3}\,V_{\mathrm{nucleo}}\ [\si{\watt}].
+	\label{eq:pcore}
+\end{equation}
+\textit{Perda no cobre.} A resistência é $R=\rho_{cu}\,\ell_{fio}/A_{fio}$ com
+$\ell_{fio}=N\,\ell_{\mathrm{esp}}$ e $N_{\mathrm{paral}}$ fios em paralelo; como
+$P=R I^2$ e a resistividade do cobre cresce ($R(T)=R_{20}[1+0{,}00393(T-20)]$):
+\begin{equation}
+	P_{cu}=\frac{N\,\ell_{\mathrm{esp}}\,R_{awg}(T)}{N_{\mathrm{paral}}}\,I_{L,\mathrm{ef}}^{2}.
+	\label{eq:pcu}
+\end{equation}
+\textit{Elevação de temperatura.} A convecção natural obedece à relação empírica
+$\Delta T=(10^{5}P/S_a)^{0{,}833}$, com $S_a$ a área de superfície. O expoente
+$0{,}833\approx5/6$ é típico de placas em convecção natural. \textit{Utilização da
+janela.} $K_u=A_{\mathrm{ocup}}/A_w$ com
+$A_{\mathrm{ocup}}=\tfrac{\pi}{4}D_{fio}^2\,N\,N_{\mathrm{paral}}$, exigindo
+$K_{u,\min}\le K_u\le K_{u,\max}$.
+
+%=====================================================================
+\chapter{Projeto do transformador}
+%=====================================================================
+Transformador de alta frequência em ferrites Magnetics (Steinmetz), TDK (rede
+neural) ou Magmattec.
+
+\section{Lei de Faraday: espiras para um dado \texorpdfstring{$B_{\max}$}{Bmax}}
+\textit{Dedução completa.} Pela lei de Faraday, a tensão no enrolamento é
+$v(t)=N\,d\Phi/dt=N A_e\,dB/dt$. Integrando no meio-período $[\,0,\,1/(2f)\,]$ em
+que a tensão $V$ é aplicada, o fluxo excursiona de $-B_m$ a $+B_m$:
+\begin{equation}
+	\int_0^{1/(2f)}\! v\,dt = N A_e\!\int_{-B_m}^{+B_m}\! dB = N A_e\,(2B_m).
+	\label{eq:vs}
+\end{equation}
+Para uma onda com valor característico $V$ aplicado durante esse meio-período, o
+lado esquerdo vale $V/(2f)$ multiplicado por um fator de forma; reagrupando os
+fatores numéricos numa única constante $k$ chega-se à forma canônica
+\begin{equation}
+	N=\frac{V}{k\,f\,B\,A_e},\qquad
+	k=\begin{cases}4 & \text{onda quadrada}\\ 4{,}44=\sqrt2\,\pi & \text{senoidal}\\ 9 & \text{inversor 3 níveis}\end{cases}
+	\label{eq:Ngeral}
+\end{equation}
+\textit{Justificativa dos valores.} Para onda quadrada simétrica,
+$V=N A_e(2B_m)(2f)=4NA_eB_mf\Rightarrow k=4$. Para senoide, a relação entre valor
+eficaz e de pico introduz o fator $\sqrt2\,\pi\approx4{,}44$. O valor $k=9$ é
+específico da forma de onda do inversor trifásico de 3 níveis deste projeto
+(herdado do aplicativo e do artigo de referência). Com $A_e$ em
+\si{\square\centi\meter} ($A_{e,\mathrm{m^2}}=A_{e,\mathrm{cm^2}}\times10^{-4}$), o
+$10^{-4}$ passa ao numerador como $10^{4}$:
+\begin{equation}
+	\boxed{\;N_p=\operatorname{round}\!\left(\frac{V_d\cdot10^{4}}{k\,B_m\,f_s\,A_{e,\mathrm{cm^2}}}\right)\;},
+	\qquad N_s=\lceil N_p\,n\rceil.
+	\label{eq:Np}
+\end{equation}
+Na ferramenta, $k$ é um \textbf{campo de entrada} (``Faraday Constant''), padrão
+$9$: o usuário informa a constante conforme a forma de onda. Menos espiras
+implicam $B$ maior (risco de saturação); mais espiras reduzem $B$ mas ocupam a
+janela --- por isso a varredura testa vários $B_m$.
+
+\section{Perdas de núcleo: Steinmetz e rede neural}
+Para ferrites Magnetics/Magmattec, usa-se Steinmetz com correção térmica
+quadrática:
+\begin{equation}
+	nP_v=\frac{k_s\,f_s^{\alpha}\,B_m^{\beta}\,(c_1-c_2 T+c_3 T^{2})}{1000},\qquad
+	P_{\mathrm{core}}=V_e\,\frac{nP_v}{1000}.
+	\label{eq:steintraf}
+\end{equation}
+A ordem correta dos coeficientes é $k_s,\alpha,\beta$; trocá-los produziria
+$f_s^{\alpha}$ com o expoente de $k_s$ e perdas irreais.
+\textit{Rede neural (TDK N27--N97).} Para esses ferrites, $nP_v$ vem de uma rede
+\emph{feed-forward} pré-treinada. As entradas $(f_s,B_m,T)$ são normalizadas ao
+intervalo de treino, $\hat x=(x-x_{\min})/(x_{\max}-x_{\min})$; a camada oculta
+aplica $\tanh(W\hat x+b)$; a saída é desnormalizada de volta a
+\si{\milli\watt\per\cubic\centi\meter}. Pesos $W$ e \emph{bias} $b$ vêm de um
+arquivo \texttt{.mat} pré-treinado.
+
+\section{Steinmetz generalizado (GSE)}
+\textit{Motivação.} Steinmetz clássico vale para excitação senoidal; para a forma
+de onda real, integra-se a taxa instantânea de variação do fluxo (GSE):
+\begin{equation}
+	P_{GSE}=\frac{1}{T}\!\int_0^{T} k_i\,\Bigl|\tfrac{dB}{dt}\Bigr|^{\alpha}\,|B|^{\beta-\alpha}\,dt,
+	\quad
+	k_i=\frac{k_s}{(2\pi)^{\alpha-1}\!\displaystyle\int_0^{2\pi}\!|\cos\theta|^{\alpha}|\sin\theta|^{\beta-\alpha}d\theta}.
+	\label{eq:gse}
+\end{equation}
+O denominador de $k_i$ garante que, para excitação senoidal, o GSE reproduza o
+Steinmetz clássico. É desativado na varredura (custo das integrais) e retorna
+indefinido se $\beta-\alpha\le-0{,}99$ (integral divergente).
+
+\section{Janela, cobre e temperatura}
+$K_u=A_{\mathrm{nec}}/A_w$ com $A_w=A_p/A_e$, restrito a
+$[K_{u,\min},K_{u,\max}]$. A perda no cobre soma primário e secundário e a
+elevação segue a mesma lei de convecção:
+\begin{equation}
+	P_{cond}=R_p\,I_{p,\mathrm{ef}}^{2}+R_s\,I_{s,\mathrm{ef}}^{2},\qquad
+	\Delta T=\!\left(\frac{1000\,(P_{\mathrm{core}}+P_{cond})}{S_a}\right)^{\!0{,}833}.
+	\label{eq:dttraf}
+\end{equation}
+O volume total é $V_{\mathrm{total}}=V_e+V_{cu}$; rejeita-se se $\Delta T$, a
+perda ou o volume excederem os limites.
+
+%=====================================================================
+\chapter{Combinação e densidade do conjunto}
+\label{cap:comb}
+%=====================================================================
+A aba final combina uma escolha de cada família. \textit{Modelo de unidade.} A
+unidade de um semicondutor é \textbf{um dissipador com seus $Q$ \emph{dies}}: a
+perda da unidade é a do conjunto ($Q$ vezes a de um \emph{die}, pois todos os
+$Q$ aquecem o mesmo dissipador) e o volume é o de um dissipador; o multiplicador
+$m_i$ é o número de braços do conversor. Somando sobre as famílias:
+\begin{equation}
+	P_{\mathrm{perdas}}=\sum_i m_i\,P_{\mathrm{unidade},i},\qquad
+	V_{\mathrm{total}}=\sum_i m_i\,V_{\mathrm{unidade},i}.
+	\label{eq:combina}
+\end{equation}
+\textit{Dedução das densidades.} Dividindo a potência (de saída ou de perdas)
+pelo volume total em litros ($1\,\si{\liter}=10^{3}\,\si{\cubic\centi\meter}$):
+\begin{equation}
+	\rho_{P}=\frac{P_{\mathrm{out}}}{V_{\mathrm{total}}\cdot10^{-3}},\qquad
+	\rho_{L}=\frac{P_{\mathrm{perdas}}}{V_{\mathrm{total}}\cdot10^{-3}}\quad[\si{\watt\per\liter}].
+	\label{eq:densi}
+\end{equation}
+\textit{Complexidade e amostragem.} A combinação de cinco famílias é
+multiplicativa; se cada uma tem $n_i$ projetos, há $\prod_i n_i$ conjuntos ---
+número astronômico. Amostra-se, portanto, um subconjunto representativo por
+família (espalhado pela faixa de perdas, para preservar a fronteira de
+compromisso), ou, sob confirmação do usuário, combinam-se todos até um limite de
+memória. A vista padrão grafa Eficiência~$\times$~$\rho_L$ (reproduz o aplicativo
+original) e a alternativa Eficiência~$\times$~$\rho_P$.
+
+%=====================================================================
+\chapter{Parâmetros do protótipo de referência}
+%=====================================================================
+Os valores padrão da interface derivam do conversor CC--CC isolado trifásico do
+artigo de referência (SOBRAEP/OJPE), na Tabela~\ref{tab:proto}.
+
+\begin{table}[htb]
+	\centering
+	\caption{Especificações do conversor de referência.}
+	\label{tab:proto}
+	\begin{tabular}{@{}lll@{}}
+		\toprule
+		Grandeza & Símbolo & Valor \\
+		\midrule
+		Tensão de entrada        & $V_{in}$ & \SI{600}{\volt} \\
+		Tensão de saída          & $V_{o}$  & \SI{920}{\volt} \\
+		Potência de saída        & $P_{o}$  & \SI{10}{\kilo\watt} \\
+		Corrente de saída        & $I_{o}$  & \SI{14.28}{\ampere} \\
+		Frequência de comutação  & $f_s$    & \SI{50}{\kilo\hertz} \\
+		Indutor de comutação     & $L_d$    & \SI{5}{\micro\henry} \\
+		Relação de espiras       & $n$      & $0{,}8333$ \\
+		Indutor de filtro        & $L_f$    & \SI{1}{\milli\henry} \\
+		Capacitor de saída       & $C_o$    & \SI{100}{\micro\farad} \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+No protótipo otimizado, o indutor de filtro usa núcleo Magnetics MPP de
+permeabilidade $\mu=147$ com 52 espiras, e o transformador usa núcleo Magmattec
+MMT139 com $N_p=35$ e $N_s=42$. A tensão sobre o indutor de filtro é de cerca de
+\SI{300}{\volt} (não o barramento), e a corrente eficaz do primário é de
+aproximadamente \SI{2.8}{\ampere} --- fatos que justificam os valores padrão e
+evitam rejeições espúrias por saturação ou por janela cheia.
+
+%=====================================================================
+\chapter{Conclusão}
+%=====================================================================
+Apresentou-se a fundamentação teórica completa da ferramenta, com a
+\textbf{dedução de cada equação a partir das leis físicas} e a
+\textbf{justificativa de cada constante}: as energias e potências de comutação e
+condução dos semicondutores SiC; a analogia térmica e os dois casos-limite do
+dissipador; o projeto iterativo do indutor com a identidade exata de $B_{pk}$, o
+algoritmo de \emph{roll-off} e Steinmetz por material; o projeto do transformador
+com a \textbf{lei de Faraday generalizada} pela constante $k$ ajustável,
+incluindo Steinmetz, rede neural e GSE; e a combinação multiplicativa que produz
+o diagrama eficiência--densidade. Todos os resultados numéricos da interface são,
+assim, rastreáveis à teoria de eletrônica de potência, de modo que a comunidade
+científica possa reproduzi-los, verificá-los e aprimorá-los.
+
+\end{document}
