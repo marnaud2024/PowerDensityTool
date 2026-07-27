@@ -18,9 +18,11 @@ Tem dois caminhos. Se você já tem o MATLAB, o segundo é o mais tranquilo.
 
 ### A) Instalador para Windows (não precisa de MATLAB)
 
-O instalador é o `build/setup/MyAppInstaller.exe`. Rode ele e siga o assistente —
-ele instala o programa junto com o MATLAB Runtime (gratuito, mas precisa de internet
-na hora da instalação). Depois é só abrir pelo atalho que foi criado.
+Baixe o `MyAppInstaller.exe` na
+[página de Releases](https://github.com/marnaud2024/PowerDensityTool/releases), rode
+ele e siga o assistente — ele instala o programa junto com o MATLAB Runtime (gratuito,
+mas precisa de internet na hora da instalação). Depois é só abrir pelo atalho que foi
+criado.
 
 Para atualizar, desinstale a versão anterior antes (Configurações → Aplicativos) e
 só então rode o instalador novo.
@@ -132,8 +134,7 @@ existe na aba Power Density.
 PowerDensityTool/
   README.md                  este guia
   LICENSE                    licença MIT
-  build/
-    setup/MyAppInstaller.exe    instalador do Windows (o único arquivo a distribuir)
+  build/                     (gerado por build_installer; o instalador é publicado nos Releases)
     READ_ME_FIRST.txt           instruções de instalação
   src/                       código-fonte
     PowerDensityApp.m           classe principal (monta as 7 abas)
