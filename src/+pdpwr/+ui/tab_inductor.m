@@ -280,6 +280,9 @@ function i_on_filter(app, ctx)
         ctx.statusLabel.Text = 'Status: 0 designs match the selected materials';
         uialert(app.UIFigure,'No design with the selected materials.','Filter empty'); return
     end
+    % Narrow the cached set to the selected materials, so the Power Density tab
+    % combines only what is shown here. Click Calculate to bring every material back.
+    app.set_results('inductor', struct('records', kept));
     [shown, capMsg] = i_applyShow(kept, ctx.showDropdown.Value);
     i_drawScatter(ctx.ax, shown, 'filtered');
     i_fillTable(ctx, shown);
