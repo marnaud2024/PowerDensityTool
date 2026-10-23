@@ -31,7 +31,11 @@ function catalog = load_catalog(catalogPath)
     catalog.heatsinks = readtable(catalogPath, 'Sheet', 'Heatsinks');
     catalog.magmattec = readtable(catalogPath, 'Sheet', 'Cores_Magmattec');
     catalog.magnetics = readtable(catalogPath, 'Sheet', 'Cores_Magnetics');
-    catalog.trafos    = readtable(catalogPath, 'Sheet', 'Cores_Trafos');
+    % PartNumber mixes numbers (Magnetics 907) and text (MMT139T6325); read it
+    % as text so the Magmattec part numbers are not lost as NaN.
+    optsT = detectImportOptions(catalogPath, 'Sheet', 'Cores_Trafos');
+    optsT = setvartype(optsT, 'PartNumber', 'string');
+    catalog.trafos    = readtable(catalogPath, optsT);
     catalog.steinmetz = readtable(catalogPath, 'Sheet', 'Steinmetz');
     catalog.awg       = readtable(catalogPath, 'Sheet', 'AWG_Table');
     % Per-material, per-permeability curve-fit coefficients (Magnetics):

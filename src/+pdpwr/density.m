@@ -4,10 +4,13 @@ function res = density(componentSets, opts)
 %   res = pdpwr.density(componentSets, opts)
 %
 %   componentSets - struct with the chosen components per family, each a table
-%                   (or struct array) with at least .PowerW (single-device loss)
-%                   and .Volume_cm3 (single-device volume). The multiplier for
-%                   family X is given in field X_mult (how many the converter
-%                   uses). Fields: .mosfetI .mosfetII .diode .inductor .transformer
+%                   (or struct array) with .PowerW and .Volume_cm3 of one unit.
+%                   A semiconductor unit is one heatsink with its devices, an
+%                   inductor unit is one core design, and a transformer unit
+%                   carries Ptrafo(upper) + Ptrafo(lower) with the volume of a
+%                   single transformer. The multiplier for family X is given
+%                   in field X_mult (how many units the converter uses).
+%                   Fields: .mosfetI .mosfetII .diode .inductor .transformer
 %   opts - struct:
 %       .P_final   - rated OUTPUT power of the converter [W]
 %       .Metric    - 'output' (efficiency / power-density view, depends on
@@ -17,7 +20,7 @@ function res = density(componentSets, opts)
 %       For 'loss':    .Loss_max [W]  .LossDens_max [W/L]   (0 = accept any)
 %
 %   Returns (one entry per ACCEPTED combination):
-%     res.eff       efficiency [%]   = (P_out)/(P_out+P_losses) 
+%     res.eff       efficiency [%]   = P_out/(P_out + losses)
 %     res.powerDens power density [W/L] = P_out / Volume
 %     res.loss      total converter losses [W]                (input-independent)
 %     res.lossDens  loss density [W/L]  = losses / Volume     (legacy metric)
@@ -68,20 +71,20 @@ function res = density(componentSets, opts)
             for c = 1:nD
                 for d = 1:nL
                     for e = 1:nT
-                        TotalL = M1.PowerW(a) + M2.PowerW(b) ...
-                               + D.PowerW(c)  + fIn(d)*L.PowerW(d) ...
+                        % Transformer unit loss is Ptrafo(upper) + Ptrafo(lower),
+                        % so fTr transformers contribute fTr/2 of each group.
+                        TotalL = fM1(a)*M1.PowerW(a) + fM2(b)*M2.PowerW(b) ...
+                               + fDi(c)*D.PowerW(c)  + fIn(d)*L.PowerW(d) ...
                                + (fTr(e)/2)*Tr.PowerW(e);
-                        TotalV = M1.Volume_cm3(a) + M2.Volume_cm3(b) ...
-                               + D.Volume_cm3(c)  + fIn(d)*L.Volume_cm3(d) ...
+                        TotalV = fM1(a)*M1.Volume_cm3(a) + fM2(b)*M2.Volume_cm3(b) ...
+                               + fDi(c)*D.Volume_cm3(c)  + fIn(d)*L.Volume_cm3(d) ...
                                + fTr(e)*Tr.Volume_cm3(e);
                         if TotalV <= 0 || TotalL <= 0, continue; end
 
-                        % Efficiency:
-                        % Pin = Pout + losses
-                        % eta = Pout / Pin
-                        % Loss density (TotalL/Vol) is the legacy "Power Density"
-                        % Y-axis; power density (P_final/Vol) is the alternative.
-                        eta  = (opts.P_final) / (opts.P_final + TotalL) * 100;
+                        % eta = Pout/(Pout + losses). Loss density (TotalL/Vol)
+                        % is the legacy y-axis; power density (P_final/Vol) is
+                        % the alternative view.
+                        eta  = opts.P_final / (opts.P_final + TotalL) * 100;
                         pDen = opts.P_final / (TotalV * 0.001);
                         lDen = TotalL       / (TotalV * 0.001);
 

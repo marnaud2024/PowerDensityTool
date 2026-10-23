@@ -2,13 +2,13 @@ function regression()
 %TEST.REGRESSION Self-contained validation of the +pdpwr package.
 %
 %   Run from the PowerDensityTool/src folder:
-%       cd 'C:\Users\Arnaud\Downloads\SOBRAEP\PowerDensityTool\src'
+%       cd src
 %       test.regression
 %
-%   This test does NOT depend on the legacy app code. It compares the new
-%   pdpwr.* implementation against numerical anchors that were hand-computed
-%   from the raw catalog files and embedded below. If any test FAILs, copy
-%   the printed numbers back to me and I will adjust the package.
+%   The suite does not depend on the legacy app code. It compares the
+%   pdpwr.* implementation against numerical anchors computed by hand from
+%   the catalog files (embedded below) and against physical checks of the
+%   models. A FAIL line prints the value obtained and the value expected.
 
     fprintf('=== pdpwr regression suite (self-contained) ===\n');
 
@@ -210,34 +210,37 @@ function regression()
         fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
     end
 
-    % -------- TEST 10: density combination formulas (vs original app2) --------
+    % -------- TEST 10: density combination formulas --------
     %
-    %   eta uses the SAME formula as the original power-density tab:
-    %       eta = (P_out - TotalLoss)/P_out * 100
-    %   with TotalLoss/TotalVol = sum(multiplier_i * unit_i). Hand anchor:
-    %       TotalL = 6*50+6*50+6*30+3*40+1*60 = 960 W
-    %       TotalV = 6*200+6*200+6*150+3*300+1*500 = 4700 cm^3 = 4.7 L
-    fprintf('\n[10] density combination (eta, power/loss density)\n');
+    %   eta = P_out/(P_out + TotalLoss)*100, every family multiplied by its
+    %   unit count. The transformer unit carries Ptrafo(upper)+Ptrafo(lower),
+    %   so fT transformers add (fT/2)*unit loss and fT*unit volume. Anchor:
+    %       TotalL = 1*50 + 1*50 + 1*30 + 3*40 + (6/2)*60 = 430 W
+    %       TotalV = 1*200 + 1*200 + 1*150 + 3*300 + 6*500 = 4450 cm^3
+    fprintf('\n[10] density combination (eta, power/loss density, multipliers)\n');
     try
         mk = @(id,pw,vol) table(string(id),pw,vol, ...
             'VariableNames',{'Identifier','PowerW','Volume_cm3'});
-        comp = struct('mosfetI',mk('M1',50,200),'mosfetI_mult',6, ...
-                      'mosfetII',mk('M2',50,200),'mosfetII_mult',6, ...
-                      'diode',mk('D',30,150),'diode_mult',6, ...
+        comp = struct('mosfetI',mk('M1',50,200),'mosfetI_mult',1, ...
+                      'mosfetII',mk('M2',50,200),'mosfetII_mult',1, ...
+                      'diode',mk('D',30,150),'diode_mult',1, ...
                       'inductor',mk('L',40,300),'inductor_mult',3, ...
-                      'transformer',mk('T',60,500),'transformer_mult',1);
-        o = struct('P_final',50000,'Metric','loss','Loss_max',1e9,'LossDens_max',1e9);
+                      'transformer',mk('T',60,500),'transformer_mult',6);
+        o = struct('P_final',10000,'Metric','loss','Loss_max',1e9,'LossDens_max',1e9);
         r = pdpwr.density(comp,o);
-        okE = i_close(r.eff(1),      (50000-960)/50000*100, tolRel, tolAbs);
-        okP = i_close(r.powerDens(1), 50000/4.7,            tolRel, tolAbs);
-        okL = i_close(r.lossDens(1),  960/4.7,              tolRel, tolAbs);
-        okT = i_close(r.loss(1),      960,                  tolRel, tolAbs);
-        if okE && okP && okL && okT
-            fprintf('    PASS  eta=%.3f%% powerDens=%.1f lossDens=%.2f loss=%.0f\n', ...
-                r.eff(1), r.powerDens(1), r.lossDens(1), r.loss(1));
+        okE = i_close(r.eff(1),       10000/(10000+430)*100, tolRel, tolAbs);
+        okP = i_close(r.powerDens(1), 10000/4.45,            tolRel, tolAbs);
+        okL = i_close(r.lossDens(1),  430/4.45,              tolRel, tolAbs);
+        okT = i_close(r.loss(1),      430,                   tolRel, tolAbs);
+        comp.mosfetI_mult = 2;                      % a second heatsink group
+        r2 = pdpwr.density(comp,o);
+        okM = i_close(r2.loss(1), 480, tolRel, tolAbs);
+        if okE && okP && okL && okT && okM
+            fprintf('    PASS  eta=%.3f%% powerDens=%.1f lossDens=%.2f loss=%.0f (x2 MOSFET-I: %.0f)\n', ...
+                r.eff(1), r.powerDens(1), r.lossDens(1), r.loss(1), r2.loss(1));
         else
-            fprintf('    FAIL  eta=%.3f powerDens=%.1f lossDens=%.2f loss=%.0f\n', ...
-                r.eff(1), r.powerDens(1), r.lossDens(1), r.loss(1));
+            fprintf('    FAIL  eta=%.3f powerDens=%.1f lossDens=%.2f loss=%.0f (x2 MOSFET-I: %.0f, exp 480)\n', ...
+                r.eff(1), r.powerDens(1), r.lossDens(1), r.loss(1), r2.loss(1));
             failures = failures + 1;
         end
     catch ME
@@ -299,6 +302,128 @@ function regression()
             fprintf('    PASS %s\n', msg);
         else
             fprintf('    FAIL %s\n', msg); failures = failures + 1;
+        end
+    catch ME
+        fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
+    end
+
+    % -------- TEST 13: GSE coefficient k1 (Li 2001) in the catalog --------
+    %
+    %   k1 = k / ((2*pi)^(alpha-1) * int_0^2pi |cos t|^alpha |sin t|^(beta-alpha) dt)
+    %   The catalog column k_iGSE must hold this value for every material
+    %   with Steinmetz coefficients (TDK rows are zero and use the neural net).
+    fprintf('\n[13] GSE coefficient k1 vs Li (2001) definition\n');
+    try
+        S = cat.steinmetz; ok13 = true; msg = '';
+        for i = 1:height(S)
+            if S.k(i) == 0, continue; end
+            al = S.alpha(i); be = S.beta(i);
+            I = integral(@(t) abs(cos(t)).^al .* abs(sin(t)).^(be-al), 0, 2*pi);
+            k1 = S.k(i) / ((2*pi)^(al-1) * I);
+            okI = i_close(S.k_iGSE(i), k1, 1e-3, tolAbs);
+            ok13 = ok13 && okI;
+            msg = sprintf('%s %s:%.4f/%.4f', msg, string(S.Material(i)), S.k_iGSE(i), k1);
+        end
+        if ok13
+            fprintf('    PASS %s\n', msg);
+        else
+            fprintf('    FAIL (catalog/formula)%s\n', msg); failures = failures + 1;
+        end
+    catch ME
+        fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
+    end
+
+    % -------- TEST 14: transformer GSE vs an independent integration --------
+    %
+    %   Rebuilds B(t) from the six-step voltage by Faraday's law with a fine
+    %   time grid, evaluates the GSE integral by trapezoids and compares with
+    %   pdpwr.design.transformer at the same core temperature. The upper and
+    %   lower waveforms are mirror images, so their core losses must match.
+    fprintf('\n[14] transformer GSE (six-step) vs independent integration\n');
+    try
+        idxR = find(strcmp(string(cat.steinmetz.Material), 'R'), 1);
+        stR = table2struct(cat.steinmetz(idxR, :));
+        D = struct('Vd',600,'Vo',920,'n',1.2,'Ipef',8,'Isef',8/1.2,'fs',50000, ...
+            'Ts',1/50000,'T',25,'kumin',0,'kumax',9.9,'DeltaTmax',999, ...
+            'Bm',0.1,'J',300,'Pnucleomax',1e9,'Vmax',1e9,'kFaraday',9,'Fr',1);
+        D.Dfio = (0.127*92^((36-38)/39))/10; D.Afio = pi*(D.Dfio/2)^2;
+        D.Rfio = 1.72e-6/D.Afio; D.Rcfio = D.Rfio;
+        D.D = D.Vo/(2*D.Vd*D.n); D.D2 = 1 - D.D;
+        core = struct('partNumber','test','manufacturer','x','geometry','R','parallel',1, ...
+            'Ae_cm2',1.0,'Ve_cm3',10,'Ap_cm4',5,'OD_cm',4,'ID_cm',2.4,'H_cm',1.5, ...
+            'Length_cm',NaN,'LegLength_cm',NaN);
+        pj = pdpwr.design.transformer(D, core, stR);
+        Aef = core.Ae_cm2*1e-4;
+        Pref = zeros(1,2); dds = [D.D2 D.D]; Tc = [pj.Tcore pj.Tcore];
+        for g = 1:2
+            dd = dds(g);
+            d1 = D.Ts*(3*dd-1)/3; d2 = D.Ts*(2-3*dd)/3;
+            edges = [0 cumsum([d1 d2 d1 d2 d1 d2])];
+            lev = [1 2 1 -1 -2 -1]*D.Vd/3;
+            t = linspace(0, D.Ts, 600001);
+            v = zeros(size(t));
+            for k = 1:6, v(t >= edges(k) & t < edges(k+1)) = lev(k); end
+            B = cumtrapz(t, v)/(pj.Np*Aef);
+            B = B - (max(B)+min(B))/2;               % symmetric flux
+            dB = v/(pj.Np*Aef);
+            f = abs(dB).^stR.alpha .* abs(B).^(stR.beta-stR.alpha);
+            Pv = stR.k_iGSE/D.Ts * trapz(t, f) * ...
+                 (stR.c1_T - stR.c2_T*Tc(g) + stR.c3_T*Tc(g)^2);   % W/m^3
+            Pref(g) = core.Ve_cm3*Pv/1e6;
+        end
+        okA = i_close(pj.PnucleoGSEsup, Pref(1), 5e-3, tolAbs);
+        okB = i_close(pj.PnucleoGSEinf, Pref(2), 5e-3, tolAbs);
+        okC = i_close(pj.PnucleoGSEsup, pj.PnucleoGSEinf, 1e-3, tolAbs);
+        if okA && okB && okC
+            fprintf('    PASS  GSE sup=%.4f W (ref %.4f)  inf=%.4f W (ref %.4f)\n', ...
+                pj.PnucleoGSEsup, Pref(1), pj.PnucleoGSEinf, Pref(2));
+        else
+            fprintf('    FAIL  GSE sup=%.4f W (ref %.4f)  inf=%.4f W (ref %.4f)\n', ...
+                pj.PnucleoGSEsup, Pref(1), pj.PnucleoGSEinf, Pref(2));
+            failures = failures + 1;
+        end
+    catch ME
+        fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
+    end
+
+    % -------- TEST 15: TDK ferrites get a core loss from the neural net --------
+    fprintf('\n[15] TDK N87 core loss (neural net) is positive\n');
+    try
+        net = pdpwr.util.load_neural_net();
+        net.materialIdx = 9;                        % N87
+        idxN = find(strcmp(string(cat.steinmetz.Material), 'N87'), 1);
+        stN = table2struct(cat.steinmetz(idxN, :));
+        pN = pdpwr.design.transformer(D, core, stN, struct('neuralNet', net));
+        if isfinite(pN.PnucleoGSEsup) && pN.PnucleoGSEsup > 0 && pN.Ptrafo > pN.PcondSup
+            fprintf('    PASS  N87 core loss = %.4f W, total = %.4f W\n', pN.PnucleoGSEsup, pN.Ptrafo);
+        else
+            fprintf('    FAIL  N87 core loss = %.4g W (must be > 0)\n', pN.PnucleoGSEsup);
+            failures = failures + 1;
+        end
+    catch ME
+        fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
+    end
+
+    % -------- TEST 16: inductor flux swing and winding temperature --------
+    %
+    %   Bpk = L*DeltaIL/(2*N*Ae), with the same ripple that sets L, and the
+    %   copper loss evaluated at Tamb + dT: R = R20*(1 + 0.00393*(Tamb+dT-20)).
+    fprintf('\n[16] inductor Bpk and copper temperature\n');
+    try
+        Di = i_designDataDemo();
+        Di.ILmed = 5; Di.DeltaIL = 1; Di.IL_max = 1; Di.L = 200e-6;
+        Di.ILef = Di.ILmed*sqrt(1 + (Di.DeltaIL/Di.ILmed)^2/12);
+        c = i_coreDemo();
+        pI = pdpwr.design.inductor(Di, c);
+        BpkExp = Di.L*Di.DeltaIL/(2*pI.N*c.Ae_mm2*1e-6);
+        CEM = (2*c.HT_mm + (c.OD_mm - c.ID_mm))*1.1;
+        PcuExp = pI.N*CEM*Di.r_awg*(1 + 0.00393*(Di.temp_ambiente + pI.DeltaT - 20))*1e-3/pI.Nparal*Di.ILef^2;
+        if ~isnan(pI.N) && i_close(pI.Bpk, BpkExp, 1e-9, tolAbs) && i_close(pI.Pcu, PcuExp, 1e-3, tolAbs)
+            fprintf('    PASS  N=%d Bpk=%.4f T  Pcu=%.3f W (dT=%.1f C)\n', pI.N, pI.Bpk, pI.Pcu, pI.DeltaT);
+        else
+            if isfield(pI, 'reason'), why = pI.reason; else, why = ''; end
+            fprintf('    FAIL  Bpk=%.5f (exp %.5f)  Pcu=%.4f (exp %.4f) %s\n', pI.Bpk, BpkExp, pI.Pcu, PcuExp, why);
+            failures = failures + 1;
         end
     catch ME
         fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;

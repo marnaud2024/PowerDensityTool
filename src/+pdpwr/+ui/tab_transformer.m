@@ -28,7 +28,7 @@ function ctx = tab_transformer(app)
             '1. Set the operating conditions and design limits.', ...
             '2. Faraday constant k: 4 = square wave; 4.44 = sine; 9 = 3-level waveform.', ...
             '3. AC loss factor Fr multiplies copper losses; Fr = 1 applies no extra correction.', ...
-            '4. Click Calculate to evaluate the selected core materials.', ...
+            '4. Click Calculate to sweep every material in the catalog.', ...
             '5. Select materials and click Filter / Plot. Rejected designs show the failed constraint.'});
 
     uilabel(tab, 'Position', [L.treeWideLabel.x L.treeWideLabel.y L.treeWideLabel.w L.treeWideLabel.h], ...
@@ -94,7 +94,7 @@ function f = i_fieldList()
             'B Increment (T)','Min Current Density (A/cm2)','Max Current Density (A/cm2)', ...
             'J Increment (A/cm2)','Wire Gauge AWG','AC Winding Loss Factor (Fr)','Ambient Temperature (C)','Max Temp Rise (C)', ...
             'Min Window Util (Ku)','Max Window Util (Ku)','Max Losses (W)','Max Volume (cm3)'}, ...
-        'default',{600,920,1.2,8,50000,9,2,0.05,0.30,0.005,280,320,20,38,1.0,60,40,0.05,0.6,80,300}, ...
+        'default',{600,920,1.2,8,50000,9,2,0.05,0.30,0.005,280,320,20,38,1.0,25,60,0.05,0.6,80,300}, ...
         'limits', {[0 5000],[0 5000],[0.01 50],[0 1000],[1000 1e6],[0.1 100],[1 10], ...
                    [0.01 0.5],[0.01 0.5],[0.001 0.2],[50 1000],[50 1000],[10 200],[10 44],[1 10],[-40 80], ...
                    [10 200],[0 1],[0 1],[10 5000],[10 50000]}, ...
@@ -111,7 +111,7 @@ function i_on_calculate(app, ctx)
 
     warnStateA = warning('off', 'MATLAB:integral:MinStepSize');
     warnStateB = warning('off', 'MATLAB:integral:NonFiniteValue');
-    cleanup = onCleanup(@() warning([warnStateA warnStateB]));
+    cleanup = onCleanup(@() warning([warnStateA warnStateB])); %#ok<NASGU>
 
     try
         s = ctx.spinners;
@@ -259,163 +259,79 @@ function i_on_filter(app, ctx)
 end
 
 function i_drawScatter(ax, designs, mode)
-
-    cla(ax);
-    hold(ax,'on');
-
+    cla(ax); hold(ax,'on');
     mats = unique({designs.Material});
-
     colors = lines(numel(mats));
-
-
     for t = 1:numel(mats)
-
         idx = strcmp({designs.Material}, mats{t});
-
         sub = designs(idx);
-
-
-        sc = scatter(ax, ...
-            [sub.VolTotal], ...
-            [sub.Ptrafo], ...
-            35, ...
-            'MarkerEdgeColor', colors(t,:), ...
-            'DisplayName', i_matLabel(mats{t}));
-
-
-        % Dados principais
-        sc.DataTipTemplate.DataTipRows(1).Label = 'Vol [cm^3]';
-        sc.DataTipTemplate.DataTipRows(2).Label = 'Loss [W]';
-
-        % Informações adicionais
+        sc = scatter(ax, [sub.VolTotal], [sub.Ptrafo], 35, ...
+            'MarkerEdgeColor', colors(t,:), 'DisplayName', i_matLabel(mats{t}));
+        sc.DataTipTemplate.DataTipRows(1).Label = 'Vol[cm3]';
+        sc.DataTipTemplate.DataTipRows(2).Label = 'Loss[W]';
+        % Compact datatip (full detail, including the upper/lower split, is in the table).
         extra = [ ...
-            dataTipTextRow('Material', {sub.Material}); ...
-            dataTipTextRow('Core',     {sub.Size}); ...
-            dataTipTextRow('Geometry', {sub.Geometry}); ...
-            dataTipTextRow('Np',       [sub.Np]); ...
-            dataTipTextRow('Ns',       [sub.Ns]); ...
-            dataTipTextRow('Bm [T]',   [sub.Bm]); ...
-            dataTipTextRow('Ku',       [sub.Ku]); ...
-            dataTipTextRow('Pcore GSE sup [W]', [sub.PnucleoGSEsup]); ...
-            dataTipTextRow('Pcore GSE inf [W]', [sub.PnucleoGSEinf]); ...
-            dataTipTextRow('Pcond sup [W]',     [sub.PcondSup]); ...
-            dataTipTextRow('Pcond inf [W]',     [sub.PcondInf]); ...
-            dataTipTextRow('DeltaT [°C]',       [sub.DeltaT]); ...
-            dataTipTextRow('Tcore [°C]',        [sub.Tcore]) ...
-            ];
-
-
+            dataTipTextRow('Mat',     {sub.Material}); ...
+            dataTipTextRow('Core',    {sub.Size}); ...
+            dataTipTextRow('Geom',    {sub.Geometry}); ...
+            dataTipTextRow('Np',      [sub.Np]); ...
+            dataTipTextRow('Ns',      [sub.Ns]); ...
+            dataTipTextRow('Bm[T]',   [sub.Bm]); ...
+            dataTipTextRow('Ku',      [sub.Ku]); ...
+            dataTipTextRow('Tcore[C]',[sub.Tcore]) ];
         sc.DataTipTemplate.DataTipRows(end+1:end+numel(extra)) = extra;
-
-
     end
-
-
     legend(ax,'Location','best');
-
-
     hold(ax,'off');
-
-
     if strcmp(mode,'filtered')
-
         title(ax, sprintf('Transformer designs (filtered, %d)', numel(designs)));
-
     else
-
         title(ax, sprintf('Transformer designs (%d)', numel(designs)));
-
     end
-
-
-    xlabel(ax,'Volume [cm^3]');
-    ylabel(ax,'Total Loss [W]');
-
-
+    xlabel(ax,'Volume [cm^3]'); ylabel(ax,'Loss per transformer, upper group [W]');
 end
 
 
 function i_fillTable(ctx, designs)
-
     data = cell(numel(designs), numel(ctx.tableCols));
-
     for i = 1:numel(designs)
-
         d = designs(i);
-
-        data(i,:) = { ...
-            d.Material, ...
-            d.Size, ...
-            d.Geometry, ...
-            d.ParallelCores, ...
-            d.Np, ...
-            d.Ns, ...
-            d.J, ...
-            d.NfiosPrim, ...
-            d.NfiosSec, ...
-            d.VolTotal, ...
-            d.PnucleoSE, ...
-            d.PnucleoGSEsup, ...
-            d.PnucleoGSEinf, ...
-            d.PcondSup, ...
-            d.PcondInf, ...
-            d.Ptrafo, ...
-            d.PtrafoInf, ...
-            d.DeltaT, ...
-            d.Tcore, ...
-            d.Bm, ...
-            d.Ku};
-
+        data(i,:) = {d.Material, d.Size, d.Geometry, d.ParallelCores, d.Np, d.Ns, ...
+                     d.J, d.NfiosPrim, d.NfiosSec, d.VolTotal, ...
+                     d.PnucleoSE, d.PnucleoGSEsup, d.PnucleoGSEinf, ...
+                     d.PcondSup, d.PcondInf, d.Ptrafo, d.PtrafoInf, ...
+                     d.DeltaT, d.Tcore, d.Bm, d.Ku};
     end
-
     ctx.table.Data = data;
-
 end
-
 
 
 function T = i_toTable(designs)
-
     T = table();
-
-    T.Material = {designs.Material}';
-    T.Core = {designs.Size}';
-    T.Geometry = {designs.Geometry}';
+    T.Material      = {designs.Material}';
+    T.Core          = {designs.Size}';
+    T.Geometry      = {designs.Geometry}';
     T.ParallelCores = [designs.ParallelCores]';
-
-    T.Np = [designs.Np]';
-    T.Ns = [designs.Ns]';
-
-    T.VolumeCm3 = [designs.VolTotal]';
-
-
-    % Core losses
-    T.PcoreSE_W = [designs.PnucleoSE]';
-
+    T.Np            = [designs.Np]';
+    T.Ns            = [designs.Ns]';
+    T.J_Acm2        = [designs.J]';
+    T.NfiosPrim     = [designs.NfiosPrim]';
+    T.NfiosSec      = [designs.NfiosSec]';
+    T.VolumeCm3     = [designs.VolTotal]';
+    T.PcoreSE_W     = [designs.PnucleoSE]';      % reference only
     T.PcoreGSEsup_W = [designs.PnucleoGSEsup]';
     T.PcoreGSEinf_W = [designs.PnucleoGSEinf]';
-
-
-    % Copper losses
-    T.PcondSup_W = [designs.PcondSup]';
-    T.PcondInf_W = [designs.PcondInf]';
-
-
-    % Total losses
-    T.PtotalSup_W = [designs.Ptrafo]';
-    T.PtotalInf_W = [designs.PtrafoInf]';
-
-
-    % Thermal
-    T.DeltaTC = [designs.DeltaT]';
-    T.TcoreC = [designs.Tcore]';
-
-
-    % Design parameters
-    T.BmT = [designs.Bm]';
-    T.Ku = [designs.Ku]';
-
+    T.PcondSup_W    = [designs.PcondSup]';
+    T.PcondInf_W    = [designs.PcondInf]';
+    T.PtotalSup_W   = [designs.Ptrafo]';
+    T.PtotalInf_W   = [designs.PtrafoInf]';
+    T.DeltaTC       = [designs.DeltaT]';
+    T.TcoreC        = [designs.Tcore]';
+    T.BmT           = [designs.Bm]';
+    T.Ku            = [designs.Ku]';
+    T.Fr            = [designs.Fr]';
 end
+
 
 function lbl = i_matLabel(code)
 % Human-readable legend label for a transformer material code (the raw codes
@@ -496,20 +412,22 @@ function str = i_formatReasons(reasons)
 end
 
 
-function D = i_buildDataStruct(s, wire)
+function D = i_buildDataStruct(s, ~)
     D = struct();
     D.Vd = s.Vd.Value; D.Vo = s.Vo.Value; D.n = s.n.Value;
     D.Ipef = s.Ipef.Value; D.Isef = D.Ipef / D.n;
     D.fs = s.fs.Value; D.Ts = 1/D.fs;
     D.kFaraday = s.kFaraday.Value;   % k in Np = Vd*1e4/(k*Bm*fs*Ae) (user-set)
-    D.Fr = s.Fr.Value;               % AC winding-loss correction factor (user-set)
-    D.kumin = s.kumin.Value; 
+    D.Fr = s.Fr.Value;               % ac winding-loss factor (user-set)
+    D.kumin = s.kumin.Value;
     D.kumax = s.kumax.Value;
-    D.DeltaTmax = s.DeltaTmax.Value; 
+    D.DeltaTmax = s.DeltaTmax.Value;
     D.T = s.Tamb.Value;
+    % Bare copper strand from the AWG formula d = 0.127*92^((36-AWG)/39) mm,
+    % valid for any gauge (Litz strands included)
     D.Dfio = (0.127*92^((36-s.AWG.Value)/39))/10;   % [cm]
-    D.Afio = pi*power(D.Dfio/2,2);                       % [cm²]
-    D.Rfio = (1.72e-6)/(D.Afio);
+    D.Afio = pi*(D.Dfio/2)^2;                        % [cm^2]
+    D.Rfio = 1.72e-6/D.Afio;                         % [ohm/cm] at 20 degC
     D.Rcfio = D.Rfio*(1 + 0.0038*(D.T - 20));
     D.D = D.Vo / (2 * D.Vd * D.n);
     D.D2 = 1 - D.D;
@@ -576,7 +494,10 @@ end
 function s = i_asChar(v)
     if istable(v), v = v{1,1}; end
     if iscell(v),       v = v{1};        end
-    if isstring(v),     s = char(v);     return; end
+    if isstring(v)
+        if ismissing(v), s = ''; else, s = char(v); end
+        return
+    end
     if isnumeric(v) || islogical(v), s = num2str(v); return; end   % numeric id -> "9928", not char(9928)
     s = char(v);
 end

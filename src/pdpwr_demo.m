@@ -2,12 +2,12 @@ function pdpwr_demo()
 %PDPWR_DEMO Sanity-check the +pdpwr package on a single design point.
 %
 %   Run from the PowerDensityTool/src folder:
-%       cd 'C:\Users\Arnaud\Downloads\SOBRAEP\PowerDensityTool\src'
+%       cd src
 %       pdpwr_demo
 %
-%   This is NOT the final UI - it just exercises every core function on one
-%   representative case so you can spot-check the new pdpwr.* package works
-%   end-to-end before we wire up the new app.
+%   Exercises the main functions on one representative case (MOSFET, diode
+%   and heatsink) and prints the results, as a quick end-to-end check of the
+%   pdpwr package without opening the interface.
 
     fprintf('Loading catalog...\n');
     cat = pdpwr.util.load_catalog();
