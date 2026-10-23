@@ -67,7 +67,7 @@ function ctx = tab_inductor(app)
         'Position', [884, L.statusLabel.y, 286, L.statusLabel.h], ...
         'Text', 'Status: Idle');
 
-    ctx.tableCols = {'Material','Core ID','mu','N','Nparal','Volume [cm3]','Losses [W]','Ku','DeltaT [C]','fs [kHz]','Stacks'};
+    ctx.tableCols = {'Material','Core ID','mu','N','Nparal','J [A/cm2]','Volume [cm3]','Losses [W]','Ku','DeltaT [C]','fs [kHz]','Stacks'};
     ctx.table = uitable(tab, ...
         'Position', [L.table.x L.table.y L.table.w L.table.h], ...
         'ColumnName', ctx.tableCols, ...
@@ -86,14 +86,14 @@ function f = i_fieldList()
         'label',   { ...
             'Inductor Voltage (V)', 'Average Current (A)', ...
             'Min Switching Freq (kHz)', 'Max Switching Freq (kHz)', ...
-            'Min Ripple Fraction', 'Max Ripple Fraction', ...
+            'Min Current Ripple', 'Max Current Ripple', ...
             'Min Current Density (A/cm2)', 'Max Current Density (A/cm2)', ...
             'Min Window Util (Ku)', 'Max Window Util (Ku)', ...
             'Max Temp Rise (C)', 'Ambient Temperature (C)', ...
             'Wire Gauge AWG', 'Max Stacks', ...
             'Max Losses (W)', 'Max Volume (cm3)'}, ...
-        'default', {300, 14, 40, 60, 0.1, 0.25, 250, 500, 0.05, 0.5, 80, 55, 16, 1, 200, 3000}, ...
-        'limits',  {[0 5000],[0 1000],[1 500],[1 500],[0 1],[0 1],[50 1000],[50 1000], ...
+        'default', {600, 4.76, 40, 50, 1.5, 1.5, 250, 500, 0.05, 0.5, 40, 25, 16, 1, 50, 300}, ...
+        'limits',  {[0 5000],[0 1000],[1 500],[1 500],[0 10],[0 10],[50 1000],[50 1000], ...
                     [0 1],[0 1],[10 200],[-40 80],[10 44],[1 5],[10 5000],[100 50000]}, ...
         'step',    {10, 1, 1, 1, 0.05, 0.05, 10, 10, 0.05, 0.05, 5, 1, 1, 1, 10, 100});
 end
@@ -101,10 +101,10 @@ end
 
 function i_on_calculate(app, ctx)
     s = ctx.spinners;
-    if s.fs_min.Value >= s.fs_max.Value
+    if s.fs_min.Value > s.fs_max.Value
         uialert(app.UIFigure,'Min frequency must be < max frequency','Invalid range'); return
     end
-    if s.IL_min.Value >= s.IL_max.Value
+    if s.IL_min.Value > s.IL_max.Value
         uialert(app.UIFigure,'Min ripple must be < max ripple','Invalid range'); return
     end
 
@@ -152,7 +152,8 @@ function i_on_calculate(app, ctx)
         end
 
         fs_vec     = (s.fs_min.Value:10:s.fs_max.Value) * 1000;
-        ripple_vec = s.IL_min.Value:0.05:s.IL_max.Value;
+        ripple_vec = s.IL_min.Value:0.1:s.IL_max.Value;
+        D.IL_max   = s.IL_max.Value;
         J_vec      = s.J_min.Value:50:s.J_max.Value;
         nInner = numel(fs_vec) * numel(ripple_vec) * numel(J_vec);
         totalEvals = nCores * nInner;
@@ -181,7 +182,7 @@ function i_on_calculate(app, ctx)
                     for J = J_vec
                         D.fs      = fs;
                         D.DeltaIL = ripple * D.ILmed;
-                        D.IL_max  = D.DeltaIL;
+                        D.IL_max  = ripple;
                         D.L       = D.Vd / (4 * fs * D.DeltaIL);
                         D.ILef    = D.ILmed * sqrt(1 + (D.DeltaIL/D.ILmed)^2 / 12);
                         D.J       = J;
@@ -236,7 +237,9 @@ function i_on_calculate(app, ctx)
         designsArr = [designs{:}];
         [~, order] = sort([designsArr.Ptotal]);
         designsArr = designsArr(order);
-        app.set_results('inductor', struct('records', designsArr));
+        app.set_results('inductor', struct( ...
+            'records', designsArr, ...
+            'filteredRecords', designsArr));
 
         % Show ALL valid designs (default) or just the best of each core.
         [shown, capMsg] = i_applyShow(designsArr, ctx.showDropdown.Value);
@@ -280,16 +283,18 @@ function i_on_filter(app, ctx)
         ctx.statusLabel.Text = 'Status: 0 designs match the selected materials';
         uialert(app.UIFigure,'No design with the selected materials.','Filter empty'); return
     end
-    % Narrow the cached set to the selected materials, so the Power Density tab
-    % combines only what is shown here. Click Calculate to bring every material back.
-    app.set_results('inductor', struct('records', kept));
+    % Save the FILTERED set for downstream use by Power Density.
+    % Keep res.records unchanged as the complete calculated set.
+    res.filteredRecords = kept;
+    app.set_results('inductor', res);
+
     [shown, capMsg] = i_applyShow(kept, ctx.showDropdown.Value);
     i_drawScatter(ctx.ax, shown, 'filtered');
     i_fillTable(ctx, shown);
     ctx.statusLabel.Text = sprintf('Status: %d designs match%s', numel(kept), capMsg);
-    kept = shown;
 
-    pdpwr.util.save_table(i_toTable(kept), 'inductor_designs_filtered');
+    % Export only the set currently shown in the Inductor tab.
+    pdpwr.util.save_table(i_toTable(shown), 'inductor_designs_filtered');
 end
 
 
@@ -311,6 +316,7 @@ function i_drawScatter(ax, designs, mode)
             dataTipTextRow('Core', {sub.ID}); ...
             dataTipTextRow('mu',   [sub.mi]); ...
             dataTipTextRow('N',    [sub.N]); ...
+            dataTipTextRow('J [A/cm2]', [sub.J]); ...
             dataTipTextRow('Ku',   [sub.Ku]); ...
             dataTipTextRow('fkHz', [sub.fs]/1000) ];
         sc.DataTipTemplate.DataTipRows(end+1:end+numel(extra)) = extra;
@@ -329,7 +335,7 @@ function i_fillTable(ctx, designs)
     data = cell(numel(designs), numel(ctx.tableCols));
     for i = 1:numel(designs)
         d = designs(i);
-        data(i,:) = {d.MaterialTag, d.ID, d.mi, d.N, d.Nparal, d.Vol, d.Ptotal, d.Ku, d.DeltaT, d.fs/1000, d.Stacks};
+        data(i,:) = {d.MaterialTag, d.ID, d.mi, d.N, d.Nparal, d.J, d.Vol, d.Ptotal, d.Ku, d.DeltaT, d.fs/1000, d.Stacks};
     end
     ctx.table.Data = data;
 end
@@ -382,10 +388,12 @@ function T = i_toTable(designs)
         'mu',          {[designs.mi]'}, ...
         'N',           {[designs.N]'}, ...
         'Nparal',      {[designs.Nparal]'}, ...
+        'J_Acm2',      {[designs.J]'}, ...
         'Volume_cm3',  {[designs.Vol]'}, ...
         'Losses_W',    {[designs.Ptotal]'}, ...
         'Ku',          {[designs.Ku]'}, ...
         'DeltaT_C',    {[designs.DeltaT]'}, ...
+        'L',           {[designs.L]'}, ...
         'fs_kHz',      {[designs.fs]'/1000}, ...
         'Stacks',      {[designs.Stacks]'});
     T = struct2table(M);

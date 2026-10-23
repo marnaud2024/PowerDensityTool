@@ -48,34 +48,49 @@ function proj = inductor(D, core, opts)
     if ~isfield(opts, 'legacyBpkBug'), opts.legacyBpkBug = false; end
 
     mu0 = 4 * pi * 1e-7;
-    Aw_mm2 = (core.ID_mm / 2)^2 * pi;                 % window area [mm^2]
-    AL0    = core.mi_rel * mu0 * (core.Ae_mm2 / core.le_mm) * 1e-3;  % [H/esp^2]
-    AL     = AL0;
 
-    % Iterate to find N consistent with permeability roll-off
-    miRollOff = 100;
+    Aw_mm2 = (core.ID_mm / 2)^2 * pi;   % Window area [mm^2]
+    
+    AL0 = core.mi_rel * mu0 * ...
+          (core.Ae_mm2 / core.le_mm) * 1e-3;   % [H/esp^2]
+    
+    AL = AL0;
+    
+    % Magmattec: use direct AL value when available
     if isfield(core, 'AL0_nHesp2') && ~isempty(core.AL0_nHesp2)
-        AL0 = core.AL0_nHesp2 * 1e-9;                 % Magmattec direct AL
+        AL0 = core.AL0_nHesp2 * 1e-9;   % [H/esp^2]
         AL  = AL0;
     end
+    
+    % Iterate to determine the number of turns N
+    miRollOff = 100;
     N = 1;
+    
     for it = 1:25
+    
         N1 = ceil(sqrt(D.L / AL));
-        Hmed = 4 * pi * (N1 / core.le_mm) * D.ILmed;  % H field, Oersted (le in mm, I in A)
+    
+        Hmed = 4 * pi * ...
+               (N1 / core.le_mm) * ...
+               D.ILmed;                 % [Oe]
+    
         miRollOff = i_rollOff(core, Hmed);
-        if miRollOff < 30
-            % Permeability has collapsed (deep saturation) - this core cannot
-            % realise the target inductance. Reject immediately instead of
-            % iterating 25x toward a divide-by-zero (AL -> 0, N -> Inf).
-            proj = i_reject('mu_rolloff<30'); return
-        end
+    
         AL = AL0 * miRollOff / 100;
-        N  = ceil(sqrt(D.L / AL));
-        if N == N1, break; end
+    
+        N = ceil(sqrt(D.L / AL));
+    
+        if N == N1
+            break;
+        end
+    
     end
-
-    if miRollOff < 30
-        proj = i_reject('mu_rolloff<30'); return
+    
+    % Reject only after completing the iteration,
+    % following the criterion used in the legacy code
+    if miRollOff < 0.3
+        proj = i_reject('mu_rolloff<0.3');
+        return;
     end
 
     % Wire window check
@@ -105,7 +120,7 @@ function proj = inductor(D, core, opts)
         B_max = D.L * (D.ILmed + D.IL_max/2) / (N * Ae_m2);
         B_min = D.L * (D.ILmed - D.IL_max/2) / (N * Ae_m2);
     end
-    Bpk_T = 0.5 * (B_max + B_min);
+    Bpk_T = 0.5 * (B_max - B_min);
     if ~isfinite(Bpk_T) || Bpk_T <= 0, proj = i_reject('Bpk_invalid'); return; end
 
     % Core loss
@@ -122,9 +137,9 @@ function proj = inductor(D, core, opts)
 
     % Copper loss with temperature feedback (converges in a few iterations)
     Tatual  = D.temp_ambiente;
-    DeltaT  = Tatual - 20;
-    for it = 1:6
-        Rawg_ohm_m = D.r_awg * (1 + 0.00393 * DeltaT);
+    DeltaT = Tatual - 20;
+    for it = 1:10
+        Rawg_ohm_m = D.r_awg * (1 + 0.00393 * (DeltaT-20));
         Rfio_ohm   = N * CEM_mm * Rawg_ohm_m * 1e-3 / Nparal;
         Pcu        = Rfio_ohm * D.ILef^2;
         Ptotal     = Pcore + Pcu;
@@ -168,15 +183,13 @@ function mu = i_rollOff(core, H_Oe)
 % Return percent permeability (0..100) as a function of H (Oersted).
 % Both fits are only valid for moderate H; for large H they diverge
 % (the Magmattec cubic shoots up because of its positive H^3 term), so we
-% clamp the result to [0, 100] - a powder core never EXCEEDS its nominal
 % permeability, it only rolls off below it.
     if isfield(core, 'mi_a') && ~isnan(core.mi_a)
-        mu = 1 ./ (core.mi_a + core.mi_b * H_Oe^core.mi_c) * 100;
+        mu = 1 ./ (core.mi_a + core.mi_b * H_Oe^core.mi_c);
     else
         % Magmattec cubic fit from legacy app2 (ProjetoIndutormagmattec)
         mu = 2.6e-7 * H_Oe^3 - 1.9352e-4 * H_Oe^2 + 0.01696643 * H_Oe + 99.67957942;
     end
-    mu = max(0, min(100, mu));
 end
 
 

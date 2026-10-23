@@ -17,8 +17,7 @@ function res = density(componentSets, opts)
 %       For 'loss':    .Loss_max [W]  .LossDens_max [W/L]   (0 = accept any)
 %
 %   Returns (one entry per ACCEPTED combination):
-%     res.eff       efficiency [%]   = (P_out - losses)/P_out  (same formula as
-%                                      the original app2; depends on P_out)
+%     res.eff       efficiency [%]   = (P_out)/(P_out+P_losses) 
 %     res.powerDens power density [W/L] = P_out / Volume
 %     res.loss      total converter losses [W]                (input-independent)
 %     res.lossDens  loss density [W/L]  = losses / Volume     (legacy metric)
@@ -69,19 +68,20 @@ function res = density(componentSets, opts)
             for c = 1:nD
                 for d = 1:nL
                     for e = 1:nT
-                        TotalL = fM1(a)*M1.PowerW(a) + fM2(b)*M2.PowerW(b) ...
-                               + fDi(c)*D.PowerW(c)  + fIn(d)*L.PowerW(d) ...
-                               + fTr(e)*Tr.PowerW(e);
-                        TotalV = fM1(a)*M1.Volume_cm3(a) + fM2(b)*M2.Volume_cm3(b) ...
-                               + fDi(c)*D.Volume_cm3(c)  + fIn(d)*L.Volume_cm3(d) ...
+                        TotalL = M1.PowerW(a) + M2.PowerW(b) ...
+                               + D.PowerW(c)  + fIn(d)*L.PowerW(d) ...
+                               + (fTr(e)/2)*Tr.PowerW(e);
+                        TotalV = M1.Volume_cm3(a) + M2.Volume_cm3(b) ...
+                               + D.Volume_cm3(c)  + fIn(d)*L.Volume_cm3(d) ...
                                + fTr(e)*Tr.Volume_cm3(e);
                         if TotalV <= 0 || TotalL <= 0, continue; end
 
-                        % Efficiency uses the SAME formula as the original app2
-                        % power-density tab: eta = (P_final - losses)/P_final.
+                        % Efficiency:
+                        % Pin = Pout + losses
+                        % eta = Pout / Pin
                         % Loss density (TotalL/Vol) is the legacy "Power Density"
                         % Y-axis; power density (P_final/Vol) is the alternative.
-                        eta  = (opts.P_final - TotalL) / opts.P_final * 100;
+                        eta  = (opts.P_final) / (opts.P_final + TotalL) * 100;
                         pDen = opts.P_final / (TotalV * 0.001);
                         lDen = TotalL       / (TotalV * 0.001);
 

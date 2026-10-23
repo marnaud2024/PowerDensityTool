@@ -157,11 +157,11 @@ end
 
 
 function i_refresh_status(app, ctx)
-    c = [ i_count(app,'mosfetI','hsAll'), ...
-          i_count(app,'mosfetII','hsAll'), ...
-          i_count(app,'diode','hsAll'), ...
-          i_count(app,'inductor','records'), ...
-          i_count(app,'transformer','records') ];
+    c = [ i_countPreferred(app,'mosfetI','filteredHsAll','hsAll'), ...
+          i_countPreferred(app,'mosfetII','filteredHsAll','hsAll'), ...
+          i_countPreferred(app,'diode','filteredHsAll','hsAll'), ...
+          i_countPreferred(app,'inductor','filteredRecords','records'), ...
+          i_countPreferred(app,'transformer','filteredRecords','records') ];
     lines = {
         sprintf('MOSFET-I       : %6d records', c(1)), ...
         sprintf('MOSFET-II      : %6d records', c(2)), ...
@@ -181,10 +181,21 @@ function i_refresh_status(app, ctx)
 end
 
 
-function n = i_count(app, key, field)
+function n = i_countPreferred(app, key, filteredField, fullField)
+% Count the same candidate set that Power Density will actually use.
     r = app.get_results(key);
-    if isempty(r) || ~isfield(r,field), n = 0; return; end
-    n = numel(r.(field));
+    if isempty(r)
+        n = 0;
+        return
+    end
+
+    if isfield(r, filteredField) && ~isempty(r.(filteredField))
+        n = numel(r.(filteredField));
+    elseif isfield(r, fullField)
+        n = numel(r.(fullField));
+    else
+        n = 0;
+    end
 end
 
 
@@ -252,18 +263,54 @@ function i_on_calculate(app, ctx)
             case 'Top 10 best', capMode = 'top';    CAP = 10;  opts.MaxResults = inf;
             otherwise,          capMode = 'spread'; CAP = 10;  opts.MaxResults = inf;
         end
+        % Use the FILTERED candidate sets produced by each upstream tab.
+        % If the user has not applied a filter since Calculate, each filtered
+        % cache is initialized with the complete valid set.
+        if isfield(m1,'filteredHsAll') && ~isempty(m1.filteredHsAll)
+            m1Candidates = m1.filteredHsAll;
+        else
+            m1Candidates = m1.hsAll;
+        end
+
+        if isfield(m2,'filteredHsAll') && ~isempty(m2.filteredHsAll)
+            m2Candidates = m2.filteredHsAll;
+        else
+            m2Candidates = m2.hsAll;
+        end
+
+        if isfield(d,'filteredHsAll') && ~isempty(d.filteredHsAll)
+            dCandidates = d.filteredHsAll;
+        else
+            dCandidates = d.hsAll;
+        end
+
+        if isfield(l,'filteredRecords') && ~isempty(l.filteredRecords)
+            lCandidates = l.filteredRecords;
+        else
+            lCandidates = l.records;
+        end
+
+        if isfield(t,'filteredRecords') && ~isempty(t.filteredRecords)
+            tCandidates = t.filteredRecords;
+        else
+            tCandidates = t.records;
+        end
 
         comp = struct();
-        comp.mosfetI         = i_capByLoss(i_toTable(m1.hsAll, 'GroupLossW','Volume_cm3','semi'), CAP, capMode);
-        comp.mosfetI_mult    = s.fM1.Value;
-        comp.mosfetII        = i_capByLoss(i_toTable(m2.hsAll, 'GroupLossW','Volume_cm3','semi'), CAP, capMode);
-        comp.mosfetII_mult   = s.fM2.Value;
-        comp.diode           = i_capByLoss(i_toTable(d.hsAll, 'GroupLossW','Volume_cm3','semi'), CAP, capMode);
-        comp.diode_mult      = s.fD.Value;
-        comp.inductor        = i_capByLoss(i_toTable(l.records, 'Ptotal','Vol','inductor'), CAP, capMode);
-        comp.inductor_mult   = s.fL.Value;
-        comp.transformer     = i_capByLoss(i_toTable(t.records, 'Ptrafo','VolTotal','transformer'), CAP, capMode);
-        comp.transformer_mult= s.fT.Value;
+        comp.mosfetI       = i_capByLoss(i_toTable(m1Candidates, 'GroupLossW','Volume_cm3','semi'), CAP, capMode);
+        comp.mosfetI_mult  = s.fM1.Value;
+
+        comp.mosfetII      = i_capByLoss(i_toTable(m2Candidates, 'GroupLossW','Volume_cm3','semi'), CAP, capMode);
+        comp.mosfetII_mult = s.fM2.Value;
+
+        comp.diode         = i_capByLoss(i_toTable(dCandidates, 'GroupLossW','Volume_cm3','semi'), CAP, capMode);
+        comp.diode_mult    = s.fD.Value;
+
+        comp.inductor      = i_capByLoss(i_toTable(lCandidates, 'Ptotal','Vol','inductor'), CAP, capMode);
+        comp.inductor_mult = s.fL.Value;
+
+        comp.transformer   = i_capByLoss(i_transformerToTable(tCandidates), CAP, capMode);
+        comp.transformer_mult = s.fT.Value;
 
         nCombo = height(comp.mosfetI)*height(comp.mosfetII)*height(comp.diode)* ...
                  height(comp.inductor)*height(comp.transformer);
@@ -448,6 +495,39 @@ function tbl = i_toTable(src, powerField, volField, kind)
 end
 
 
+
+function tbl = i_transformerToTable(src)
+% Convert transformer records to the common density table format.
+% Total transformer loss used in the density calculation:
+%   PowerW = Ptrafo + PtrafoInf
+
+    n = numel(src);
+
+    if n == 0
+        tbl = table('Size',[0 3], ...
+            'VariableTypes', {'string','double','double'}, ...
+            'VariableNames', {'Identifier','PowerW','Volume_cm3'});
+        return
+    end
+
+    ids = strings(n,1);
+    pw  = zeros(n,1);
+    vol = zeros(n,1);
+
+    for i = 1:n
+        ids(i) = i_identifier(src(i), 'transformer');
+
+        % Sum the two total transformer losses
+        pw(i) = src(i).Ptrafo + src(i).PtrafoInf;
+
+        % Total transformer volume
+        vol(i) = src(i).VolTotal;
+    end
+
+    tbl = table(ids, pw, vol, ...
+        'VariableNames', {'Identifier','PowerW','Volume_cm3'});
+end
+
 function str = i_identifier(r, kind)
 % Build a FULL constructive label per component family - all the build details
 % that appear in each component's own tab, so the combo TABLE alone is enough to
@@ -479,10 +559,35 @@ function str = i_identifier(r, kind)
                 i_asChar(r.MaterialTag), i_asChar(r.ID), r.mi, r.N, r.Nparal, r.Stacks, ...
                 r.Ku, r.DeltaT, r.fs/1000, r.Vol, r.Ptotal));
         case 'transformer'
-            str = string(sprintf(['%s core#%s [%s, par=%d] | Np=%d Ns=%d Bm=%.2fT | ' ...
-                'Ku=%.2f dT=%.0fC | Vol=%.1fcm3 Pcore=%.2f Pcu=%.2f loss=%.2fW'], ...
-                i_asChar(r.Material), i_asChar(r.Size), i_asChar(r.Geometry), r.ParallelCores, ...
-                r.Np, r.Ns, r.Bm, r.Ku, r.DeltaT, r.VolTotal, r.PnucleoSE, r.Pcond, r.Ptrafo));
+            PcondTotal = r.PcondSup + r.PcondInf;
+            Ptotal     = r.Ptrafo + r.PtrafoInf;
+
+            str = string(sprintf( ...
+                ['%s core#%s [%s, par=%d] | ' ...
+                 'Np=%d Ns=%d Bm=%.3fT | ' ...
+                 'Ku=%.3f dT=%.2fC Tcore=%.2fC | ' ...
+                 'Vol=%.2fcm3 | ' ...
+                 'PcoreSE=%.3fW | ' ...
+                 'PcondSup=%.3fW PcondInf=%.3fW PcondTotal=%.3fW | ' ...
+                 'PtrafoSup=%.3fW PtrafoInf=%.3fW loss(total)=%.3fW'], ...
+                i_asChar(r.Material), ...
+                i_asChar(r.Size), ...
+                i_asChar(r.Geometry), ...
+                r.ParallelCores, ...
+                r.Np, ...
+                r.Ns, ...
+                r.Bm, ...
+                r.Ku, ...
+                r.DeltaT, ...
+                r.Tcore, ...
+                r.VolTotal, ...
+                r.PnucleoSE, ...
+                r.PcondSup, ...
+                r.PcondInf, ...
+                PcondTotal, ...
+                r.Ptrafo, ...
+                r.PtrafoInf, ...
+                Ptotal));
         otherwise
             str = string(i_asChar(r.(kind)));
     end

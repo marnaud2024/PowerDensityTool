@@ -204,8 +204,11 @@ function i_on_calculate(app, ctx, which)
             end
         end
 
-        result.records = records;
-        result.hsAll   = hsAll;
+        result.records       = records;
+        result.hsAll         = hsAll;
+        % Default downstream set: all valid heatsink combinations.
+        % "Filter / Plot" replaces only filteredHsAll, preserving hsAll.
+        result.filteredHsAll = hsAll;
         app.set_results(sprintf('mosfet%s', which), result);
 
         cla(ctx.ax);
@@ -303,6 +306,11 @@ function i_on_filter(app, ctx, which)
         ctx.statusLabel.Text = 'Status: 0 candidates match the current filters';
         uialert(app.UIFigure, 'No candidate matches the current filters.', 'Filter empty'); return
     end
+    % Save the FILTERED heatsink combinations for Power Density.
+    % Keep res.hsAll as the complete calculated set.
+    res.filteredHsAll = kept;
+    app.set_results(sprintf('mosfet%s', which), res);
+
     cla(ctx.ax);
     i_drawScatter(ctx.ax, kept, true);
     i_fillTable(ctx, kept);

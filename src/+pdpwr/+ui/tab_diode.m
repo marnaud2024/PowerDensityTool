@@ -165,7 +165,10 @@ function i_on_calculate(app, ctx)
             end
         end
 
-        app.set_results('diode', struct('records', rec, 'hsAll', hsAll));
+        app.set_results('diode', struct( ...
+            'records', rec, ...
+            'hsAll', hsAll, ...
+            'filteredHsAll', hsAll));
         cla(ctx.ax);
         if isempty(hsAll)
             ctx.statusLabel.Text = sprintf('Status: 0 / %d diodes fit any HS.', n);
@@ -241,6 +244,11 @@ function i_on_filter(app, ctx)
         ctx.statusLabel.Text = 'Status: 0 candidates match the current filters';
         uialert(app.UIFigure,'No candidate matches filters.','Filter empty'); return
     end
+    % Save the FILTERED heatsink combinations for Power Density.
+    % Keep res.hsAll as the complete calculated set.
+    res.filteredHsAll = kept;
+    app.set_results('diode', res);
+
     cla(ctx.ax);
     i_drawScatter(ctx.ax, kept, true);
     i_fillTable(ctx, kept);
