@@ -31,10 +31,8 @@ octave-workspace
 *.snm
 *.vrb
 
-# ---- Editor / assistant metadata (keep out of the repo) ----
-.claude/
+# ---- Editor ----
 .vscode/
-CLAUDE.md
 
 # ---- OS junk ----
 Thumbs.db

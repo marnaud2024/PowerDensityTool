@@ -104,11 +104,12 @@ perda: $P_{\mathrm{in}}=P_{\mathrm{out}}+P_{\mathrm{perdas}}$. Tratando
 $P_{\mathrm{out}}$ como a potência de referência do projeto,
 \begin{equation}
 	\eta=\frac{P_{\mathrm{out}}}{P_{\mathrm{in}}}
-	    =\frac{P_{\mathrm{out}}}{P_{\mathrm{out}}+P_{\mathrm{perdas}}}
-	    =\frac{P_{\mathrm{out}}-P_{\mathrm{perdas}}}{P_{\mathrm{out}}}\times100\%,
+	    =\frac{P_{\mathrm{out}}}{P_{\mathrm{out}}+P_{\mathrm{perdas}}}\times100\%,
 	\label{eq:eta}
 \end{equation}
-sendo a última forma a adotada na ferramenta (idêntica à do aplicativo original).
+que é a forma adotada na ferramenta. O aplicativo original usava
+$(P_{\mathrm{out}}-P_{\mathrm{perdas}})/P_{\mathrm{out}}$, que só coincide com
+\eqref{eq:eta} se $P_{\mathrm{out}}$ for a potência de entrada.
 Como $\eta$ contém $P_{\mathrm{out}}$, ela depende da potência nominal; uma
 análise por perdas absolutas (\si{\watt}) ou por densidade de perdas
 (\si{\watt\per\liter}) independe dela.
@@ -274,6 +275,11 @@ $\langle i_\sim^2\rangle=\Delta I_L^2/12$, logo
 	=I_{L,\mathrm{med}}\sqrt{1+\tfrac{1}{12}\!\left(\tfrac{\Delta I_L}{I_{L,\mathrm{med}}}\right)^{2}}.
 	\label{eq:ILef}
 \end{equation}
+Na ferramenta, $\Delta I_L$ é informado em ampères (pico a pico) e o mesmo valor
+entra em \eqref{eq:Lind}, em \eqref{eq:ILef} e na excursão de fluxo
+\eqref{eq:bpk}. Para o conversor de referência, $V_d=\SI{300}{\volt}$,
+$\Delta I_L=\SI{1.5}{\ampere}$ e $f_s=\SI{50}{\kilo\hertz}$ dão
+$L=\SI{1}{\milli\henry}$.
 
 \section{Espiras e \emph{roll-off} de permeabilidade}
 \textit{Dedução de $A_{L0}$.} Um circuito magnético de comprimento $\ell_e$, área
@@ -295,30 +301,38 @@ relação CGS,
 \textit{Algoritmo iterativo.} A permeabilidade efetiva decresce com $H$ segundo o
 ajuste (empírico, por material e permeabilidade) do \emph{roll-off}:
 \begin{equation}
-	\mu\%(H)=\frac{1}{a+b\,H^{c}}\times100\ \in[0,100].
+	\mu\%(H)=\frac{1}{a+b\,H^{c}}\ \in[0,100].
 	\label{eq:rolloff}
 \end{equation}
+Com $a=0{,}01$ (valor de todos os ajustes do catálogo), a expressão já resulta em
+porcentagem, $100\%$ em $H=0$.
 Como $H$ depende de $N$ e $N$ depende de $A_L=A_{L0}\,\mu\%/100$, resolve-se por
 ponto fixo:
 \begin{algorithmic}[1]
 	\STATE $A_L\leftarrow A_{L0}$;\quad $N\leftarrow\lceil\sqrt{L/A_L}\rceil$
 	\REPEAT
 		\STATE $H\leftarrow 4\pi\,(N/\ell_e)\,I_{L,\mathrm{med}}$
-		\STATE $\mu\%\leftarrow$ \eqref{eq:rolloff};\quad se $\mu\%<30$: \textbf{rejeita} (saturado)
+		\STATE $\mu\%\leftarrow$ \eqref{eq:rolloff}
 		\STATE $A_L\leftarrow A_{L0}\,\mu\%/100$;\quad $N\leftarrow\lceil\sqrt{L/A_L}\rceil$
 	\UNTIL{$N$ estabiliza}
+	\STATE se $\mu\%<0{,}3$: \textbf{rejeita} (núcleo saturado; mesmo critério do aplicativo original)
 \end{algorithmic}
 
 \section{Densidade de fluxo e perdas}
 \textit{Dedução de $B_{pk}$.} O fluxo enlaçado é $\lambda=N\Phi=L\,I$ e o fluxo
 $\Phi=B\,A_e$; logo $B=\Phi/A_e=\lambda/(N A_e)$:
 \begin{equation}
-	B_{pk}=\frac{L\,I}{N\,A_e},\qquad I=I_{L,\mathrm{med}}\pm\tfrac{\Delta I_L}{2}.
+	B=\frac{L\,I}{N\,A_e},\qquad
+	B_{pk}=\frac{B(I_{\max})-B(I_{\min})}{2}=\frac{L\,\Delta I_L}{2\,N\,A_e},
+	\quad I_{\max,\min}=I_{L,\mathrm{med}}\pm\tfrac{\Delta I_L}{2}.
 	\label{eq:bpk}
 \end{equation}
 Esta identidade usa $L$ e o inteiro $N$ já obtidos, sem recorrer à permeabilidade
-(que divergiria). O aplicativo legado usava o comprimento médio de espira no lugar
-de $\ell_e$ e omitia $N$, subestimando $B$ (e as perdas) em \numrange{4}{5}~vezes.
+(que divergiria). $B_{pk}$ é a metade da excursão de fluxo causada pelo
+\emph{ripple}, que é a grandeza do ajuste de Steinmetz; a componente média do
+fluxo (polarização CC) atua só pelo \emph{roll-off}. O aplicativo legado usava o
+comprimento médio de espira no lugar de $\ell_e$ e omitia $N$, subestimando $B$
+(e as perdas) em \numrange{4}{5}~vezes.
 
 \textit{Perda de núcleo (Steinmetz).} A perda volumétrica de um material
 magnético segue empiricamente uma lei de potência na frequência e no fluxo (lei
@@ -330,7 +344,9 @@ de Steinmetz), com expoentes ajustados por material:
 \end{equation}
 \textit{Perda no cobre.} A resistência é $R=\rho_{cu}\,\ell_{fio}/A_{fio}$ com
 $\ell_{fio}=N\,\ell_{\mathrm{esp}}$ e $N_{\mathrm{paral}}$ fios em paralelo; como
-$P=R I^2$ e a resistividade do cobre cresce ($R(T)=R_{20}[1+0{,}00393(T-20)]$):
+$P=R I^2$ e a resistividade do cobre cresce com a temperatura do enrolamento,
+$T=T_{amb}+\Delta T$ ($R(T)=R_{20}[1+0{,}00393(T_{amb}+\Delta T-20)]$, resolvido
+por iteração junto com $\Delta T$):
 \begin{equation}
 	P_{cu}=\frac{N\,\ell_{\mathrm{esp}}\,R_{awg}(T)}{N_{\mathrm{paral}}}\,I_{L,\mathrm{ef}}^{2}.
 	\label{eq:pcu}
@@ -345,8 +361,9 @@ $K_{u,\min}\le K_u\le K_{u,\max}$.
 %=====================================================================
 \chapter{Projeto do transformador}
 %=====================================================================
-Transformador de alta frequência em ferrites Magnetics (Steinmetz), TDK (rede
-neural) ou Magmattec.
+Transformador de alta frequência em ferrites Magnetics e Magmattec (GSE) ou TDK
+(rede neural). O conversor tem seis transformadores, três na ponte superior e três
+na inferior; os dois grupos são avaliados.
 
 \section{Lei de Faraday: espiras para um dado \texorpdfstring{$B_{\max}$}{Bmax}}
 \textit{Dedução completa.} Pela lei de Faraday, a tensão no enrolamento é
@@ -382,8 +399,8 @@ implicam $B$ maior (risco de saturação); mais espiras reduzem $B$ mas ocupam a
 janela --- por isso a varredura testa vários $B_m$.
 
 \section{Perdas de núcleo: Steinmetz e rede neural}
-Para ferrites Magnetics/Magmattec, usa-se Steinmetz com correção térmica
-quadrática:
+Para ferrites Magnetics/Magmattec, o Steinmetz clássico com correção térmica
+quadrática fica como referência (a perda adotada é a GSE da seção seguinte):
 \begin{equation}
 	nP_v=\frac{k_s\,f_s^{\alpha}\,B_m^{\beta}\,(c_1-c_2 T+c_3 T^{2})}{1000},\qquad
 	P_{\mathrm{core}}=V_e\,\frac{nP_v}{1000}.
@@ -396,7 +413,10 @@ $f_s^{\alpha}$ com o expoente de $k_s$ e perdas irreais.
 intervalo de treino, $\hat x=(x-x_{\min})/(x_{\max}-x_{\min})$; a camada oculta
 aplica $\tanh(W\hat x+b)$; a saída é desnormalizada de volta a
 \si{\milli\watt\per\cubic\centi\meter}. Pesos $W$ e \emph{bias} $b$ vêm de um
-arquivo \texttt{.mat} pré-treinado.
+arquivo \texttt{.mat} pré-treinado. A temperatura de entrada é mantida dentro da
+faixa de treino (\SIrange{25}{120}{\degreeCelsius}); fora dela a rede extrapola e
+pode devolver perda quase nula. Nesses ferrites a perda dos dois grupos vem da
+rede.
 
 \section{Steinmetz generalizado (GSE)}
 \textit{Motivação.} Steinmetz clássico vale para excitação senoidal; para a forma
@@ -407,21 +427,50 @@ de onda real, integra-se a taxa instantânea de variação do fluxo (GSE):
 	k_i=\frac{k_s}{(2\pi)^{\alpha-1}\!\displaystyle\int_0^{2\pi}\!|\cos\theta|^{\alpha}|\sin\theta|^{\beta-\alpha}d\theta}.
 	\label{eq:gse}
 \end{equation}
-O denominador de $k_i$ garante que, para excitação senoidal, o GSE reproduza o
-Steinmetz clássico. É desativado na varredura (custo das integrais) e retorna
-indefinido se $\beta-\alpha\le-0{,}99$ (integral divergente).
+O denominador de $k_i$ (o $k_1$ de Li) garante que, para excitação senoidal, o GSE
+reproduza o Steinmetz clássico; o catálogo guarda esse valor na coluna
+\texttt{k\_iGSE}.
+
+\textit{Forma de onda.} Pela lei de Faraday, $dB/dt=v_p(t)/(N_pA_e)$, e $B(t)$ é
+linear por trechos. Para $V_o>\SI{480}{\volt}$ ($1/3<D<2/3$) a tensão no primário
+tem seis degraus ($\pm V_d/3$, $\pm2V_d/3$) com durações alternadas
+$d_1=T_s(3D-1)/3$ e $d_2=T_s(2-3D)/3$; para $V_o\le\SI{480}{\volt}$ ($D\le1/3$)
+são três pulsos de duração $DT_s$ iniciados em $0$, $T_s/3$ e $2T_s/3$, com tensão
+nula entre eles (fluxo constante, sem perda pela GSE). Em cada trecho
+$B=a\,t+b$, com $b$ o valor da reta em $t=0$; por isso cada trecho é integrado no
+seu intervalo real $[t_{i-1},t_i]$. Integrar todos de $0$ a $d_i$, como fazia o
+aplicativo original, avalia $|B|$ em valores errados (picos de até $5B_m$). Como
+$B$ é linear, a integral tem forma fechada ($c=\beta-\alpha>-1$, $u=a\,t+b$):
+\begin{equation}
+	\int_{t_{i-1}}^{t_i}\!|a\,t+b|^{c}\,dt=\frac{1}{a}\left[\frac{\operatorname{sgn}(u)\,|u|^{c+1}}{c+1}\right]_{u(t_{i-1})}^{u(t_i)}.
+	\label{eq:gsefechada}
+\end{equation}
+As formas de onda dos grupos superior ($D'=1-D$) e inferior ($D$) são espelhadas
+no tempo, de modo que a GSE resulta igual para os dois. Retorna indefinido se
+$\beta-\alpha\le-0{,}99$ (integral divergente).
 
 \section{Janela, cobre e temperatura}
 $K_u=A_{\mathrm{nec}}/A_w$ com $A_w=A_p/A_e$, restrito a
-$[K_{u,\min},K_{u,\max}]$. A perda no cobre soma primário e secundário e a
-elevação segue a mesma lei de convecção:
+$[K_{u,\min},K_{u,\max}]$. O fio é o filamento de cobre nu do AWG informado,
+$d=0{,}127\cdot92^{(36-\mathrm{AWG})/39}$~mm. A perda no cobre soma primário e
+secundário, multiplicada pelo fator de perda CA $F_r$ (efeitos pelicular e de
+proximidade; $F_r=1$ sem correção), e a elevação segue a mesma lei de convecção:
 \begin{equation}
-	P_{cond}=R_p\,I_{p,\mathrm{ef}}^{2}+R_s\,I_{s,\mathrm{ef}}^{2},\qquad
+	P_{cond}=F_r\left(R_p\,I_{p,\mathrm{ef}}^{2}+R_s\,I_{s,\mathrm{ef}}^{2}\right),\qquad
 	\Delta T=\!\left(\frac{1000\,(P_{\mathrm{core}}+P_{cond})}{S_a}\right)^{\!0{,}833}.
 	\label{eq:dttraf}
 \end{equation}
-O volume total é $V_{\mathrm{total}}=V_e+V_{cu}$; rejeita-se se $\Delta T$, a
-perda ou o volume excederem os limites.
+A perda de núcleo e as resistências dependem da temperatura do núcleo,
+$T=T_{amb}+\Delta T$, que depende delas. Resolve-se por ponto fixo com
+sub-relaxação ($T\leftarrow T+0{,}5\,(T_{amb}+\Delta T-T)$) até a variação ficar
+abaixo de \SI{0.01}{\degreeCelsius}; o projeto que não converge é rejeitado.
+
+O volume do toróide considera as camadas do enrolamento: com $d_p$ e $d_s$ os
+diâmetros equivalentes dos feixes do primário e do secundário,
+$d_{eq}=\operatorname{round}\!\bigl[(N_pd_p+N_sd_s)/(\pi D_e)\bigr](d_p+d_s)$ e
+$V_{\mathrm{total}}=\pi\bigl[(D_e+d_{eq})/2\bigr]^2(H_t+d_{eq})$; nos núcleos EE,
+$V_{\mathrm{total}}=V_e+V_{cu}$. Rejeita-se se $\Delta T$, a perda ou o volume
+excederem os limites.
 
 %=====================================================================
 \chapter{Combinação e densidade do conjunto}
@@ -431,7 +480,10 @@ A aba final combina uma escolha de cada família. \textit{Modelo de unidade.} A
 unidade de um semicondutor é \textbf{um dissipador com seus $Q$ \emph{dies}}: a
 perda da unidade é a do conjunto ($Q$ vezes a de um \emph{die}, pois todos os
 $Q$ aquecem o mesmo dissipador) e o volume é o de um dissipador; o multiplicador
-$m_i$ é o número de braços do conversor. Somando sobre as famílias:
+$m_i$ é o número de dissipadores. No transformador, a unidade carrega a perda de
+um transformador de cada grupo ($P_{\mathrm{sup}}+P_{\mathrm{inf}}$) com o volume de
+um transformador, e $m$ é o número total de transformadores, de modo que a parcela
+de perdas é $(m/2)(P_{\mathrm{sup}}+P_{\mathrm{inf}})$. Somando sobre as famílias:
 \begin{equation}
 	P_{\mathrm{perdas}}=\sum_i m_i\,P_{\mathrm{unidade},i},\qquad
 	V_{\mathrm{total}}=\sum_i m_i\,V_{\mathrm{unidade},i}.
@@ -479,12 +531,12 @@ artigo de referência (SOBRAEP/OJPE), na Tabela~\ref{tab:proto}.
 	\end{tabular}
 \end{table}
 
-No protótipo otimizado, o indutor de filtro usa núcleo Magnetics MPP de
-permeabilidade $\mu=147$ com 52 espiras, e o transformador usa núcleo Magmattec
-MMT139 com $N_p=35$ e $N_s=42$. A tensão sobre o indutor de filtro é de cerca de
-\SI{300}{\volt} (não o barramento), e a corrente eficaz do primário é de
-aproximadamente \SI{2.8}{\ampere} --- fatos que justificam os valores padrão e
-evitam rejeições espúrias por saturação ou por janela cheia.
+Cada um dos três indutores de filtro conduz \SI{4.76}{\ampere} médios com
+\emph{ripple} de \SI{1.5}{\ampere} pico a pico; com $V_d=\SI{300}{\volt}$ resulta
+$L=\SI{1}{\milli\henry}$. O transformador do protótipo é o Magmattec MMT139T6325,
+com $N_p=35$, $N_s=42$, fio Litz AWG~38, $J=\SI{320}{\ampere\per\square\centi\meter}$
+e corrente eficaz de \SI{8}{\ampere} no primário. Esses são os valores padrão das
+abas de indutor e transformador.
 
 %=====================================================================
 \chapter{Conclusão}
@@ -496,7 +548,7 @@ condução dos semicondutores SiC; a analogia térmica e os dois casos-limite do
 dissipador; o projeto iterativo do indutor com a identidade exata de $B_{pk}$, o
 algoritmo de \emph{roll-off} e Steinmetz por material; o projeto do transformador
 com a \textbf{lei de Faraday generalizada} pela constante $k$ ajustável,
-incluindo Steinmetz, rede neural e GSE; e a combinação multiplicativa que produz
+incluindo Steinmetz, rede neural e GSE sobre a forma de onda real; e a combinação multiplicativa que produz
 o diagrama eficiência--densidade. Todos os resultados numéricos da interface são,
 assim, rastreáveis à teoria de eletrônica de potência, de modo que a comunidade
 científica possa reproduzi-los, verificá-los e aprimorá-los.

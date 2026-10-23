@@ -45,14 +45,16 @@ Era o que o app antigo desenhava - no Esbocoprografico.m a variavel chamada
 "PowerDensity" era, na verdade, PerdasTotais/Volume. Nessa, quanto menor, melhor. A
 vantagem e que ela nao depende da potencia de entrada.
 
-O rendimento usa a mesma formula da aba power-density do app2 original:
+O rendimento e o classico, com P_out como potencia de saida:
 
-   eta = (P_out - P_loss_total) / P_out * 100   [%]
+   eta = P_out / (P_out + P_loss_total) * 100   [%]
 
-(tratando P_out como a potencia de referencia). Repare que o rendimento depende de
-P_out: para as mesmas perdas, um conversor de potencia maior tem rendimento maior. E
-por isso que a ferramenta separa duas analises - a de rendimento, que usa P_out, e a
-de perdas, que independe da potencia e compara as perdas absolutas.
+O app2 original usava (P_out - P_loss_total)/P_out, que seria a forma certa se P_out
+fosse a potencia de entrada. A diferenca e pequena perto de 98-99 %, mas existe.
+Repare que o rendimento depende de P_out: para as mesmas perdas, um conversor de
+potencia maior tem rendimento maior. E por isso que a ferramenta separa duas analises -
+a de rendimento, que usa P_out, e a de perdas, que independe da potencia e compara as
+perdas absolutas.
 
 Onde fica o melhor ponto depende da vista. Em "P_out / Vol", e o canto superior
 direito (rendimento e densidade altos). Em "Loss / Vol", e o canto inferior esquerdo,
@@ -187,7 +189,15 @@ condicoes de operacao:
    ILef  = ILmed * sqrt(1 + (DeltaIL/ILmed)^2 / 12)      [A]  (RMS com ripple)
 
 Atencao ao Vd: e a tensao SOBRE O INDUTOR, nao o barramento - costuma ser de dezenas a
-centenas de volts. DeltaIL e o ripple pico-a-pico e ILmed a corrente media.
+centenas de volts. DeltaIL e o ripple pico-a-pico, em amperes, e ILmed a corrente
+media. Os campos "Min/Max Ripple p-p (A)" da aba definem a faixa de DeltaIL varrida, com
+passo de 0.1 A. O mesmo DeltaIL entra no L, na corrente RMS e na excursao de fluxo mais
+abaixo. (Na versao 1.0 o campo era uma fracao de ILmed; numa versao intermediaria ele
+chegou a entrar como fracao no L e como ampere no fluxo ao mesmo tempo, o que dava um L
+errado. Agora e uma grandeza so, em A.)
+
+Para o conversor de referencia (secao 8), Vd = 300 V, DeltaIL = 1.5 A e fs = 50 kHz dao
+L = 1 mH, que e o indutor do prototipo.
 
 Para as espiras, a gente parte da indutancia por espira ao quadrado:
 
@@ -204,12 +214,15 @@ N:
    N    = ceil(sqrt(L / AL))
    e repete ate N parar de mudar (no maximo 25 vezes)
 
-Se em qualquer passo mu% cai abaixo de 30, o nucleo saturou: a gente rejeita na hora
-('mu_rolloff<30'), o que evita AL tender a zero e N estourar. Os modelos de roll-off
+Depois do laco, se mu% ficou abaixo de 0.3 %, o nucleo saturou e o projeto e
+rejeitado ('mu_rolloff<0.3') - o mesmo criterio do app2. Os modelos de roll-off
 (permeabilidade restante, em %, contra H em Oe) sao:
 
-   - Magnetics:  mu% = 1 / (a + b * H^c) * 100
-                 (a, b, c por material E por permeabilidade - aba Magnetics_CurveFit)
+   - Magnetics:  mu% = 1 / (a + b * H^c)
+                 (a, b, c por material E por permeabilidade - aba Magnetics_CurveFit;
+                 como a = 0.01, a formula ja sai em %, 100 em H = 0. A versao 1.0
+                 multiplicava por 100 de novo, e o limite superior cortava tudo em
+                 100 %, ou seja, o roll-off nao atuava.)
    - Magmattec:  o ajuste cubico do legado,
                  mu% = 2.6e-7*H^3 - 1.9352e-4*H^2 + 0.01696643*H + 99.67957942
 
@@ -235,9 +248,13 @@ perdas:
 que vem de L = N*Phi/I e Phi = B*Ae. E equivalente a mu0*mu_eff*N*I/le, mas nao explode,
 porque usa o L e o N ja calculados sem recompor o roll-off. Com Ae em m^2:
 
-   B_max = L * (ILmed + IL_max/2) / (N * Ae)     [T]
-   B_min = L * (ILmed - IL_max/2) / (N * Ae)     [T]
-   Bpk   = 0.5 * (B_max + B_min)                 [T]
+   B_max = L * (ILmed + DeltaIL/2) / (N * Ae)    [T]
+   B_min = L * (ILmed - DeltaIL/2) / (N * Ae)    [T]
+   Bpk   = 0.5 * (B_max - B_min) = L*DeltaIL/(2*N*Ae)   [T]
+
+O Bpk e a metade da excursao de fluxo causada pelo ripple, que e o que o ajuste de
+Steinmetz espera. A componente media do fluxo (polarizacao DC) entra so pelo roll-off.
+A versao 1.0 usava a media (B_max + B_min)/2, que e justamente a polarizacao DC.
 
 (Da para reproduzir o bug antigo com opts.legacyBpkBug: ele usava
 B = mu0*mu_r*I/(CEM/1000), sem o N e com o comprimento medio de espira CEM no lugar do
@@ -256,10 +273,14 @@ A perda de nucleo e por Steinmetz, com coeficientes que dependem do material:
 
    Pcore = Pv[mW/cm^3] * 1e-3 * Vol_nucleo[cm^3]     [W]
 
-A perda no cobre precisa iterar (6 vezes) porque a resistencia sobe com a temperatura:
+A perda no cobre precisa iterar (10 vezes) porque a resistencia sobe com a temperatura
+do enrolamento, que e o ambiente mais a elevacao:
 
    CEM   = (2*HT + (OD - ID)) * 1.1                  [mm]  (comprimento medio de espira)
-   R_awg(T) = r_awg * (1 + 0.00393 * DeltaT)         [ohm/m]
+   R_awg(T) = r_awg * (1 + 0.00393 * (T_amb + DeltaT - 20))   [ohm/m]
+
+(r_awg e a resistencia a 20 degC. O app2 usava so DeltaT no lugar de T_amb + DeltaT - 20,
+o que subestima o cobre em uns 10 % com 25 degC de ambiente.)
    R_fio    = N * CEM * R_awg * 1e-3 / Nparal        [ohm]
    Pcu      = R_fio * ILef^2                          [W]
    Ptotal   = Pcore + Pcu                             [W]
@@ -275,8 +296,8 @@ e rejeita se Ptotal > MaxLoss ou Vol > MaxVol.
 
 Sobre aquele efeito de "pontos quase iguais" no grafico: como d_atual e pequeno quando
 Ku e baixo, o volume acaba dominado pelo nucleo, e varios projetos do mesmo nucleo caem
-quase no mesmo ponto. Por isso a interface mostra so o melhor projeto de cada nucleo
-distinto (i_bestPerCore), o que espalha os pontos ao longo do eixo de volume.
+quase no mesmo ponto. Por isso a aba tem a opcao "Best per core", que mostra so o melhor
+projeto de cada nucleo distinto (i_bestPerCore).
 
 
 6. Projeto do transformador  (pdpwr.design.transformer)
@@ -322,6 +343,13 @@ O comprimento medio de espira depende da geometria:
    EE:        CEM = (2*Ae/H + 2*H) * 1.1            [cm]
    Toroidal:  CEM = (2*H + (OD - ID)) * 1.1         [cm]
 
+O fio e o filamento de cobre nu do AWG escolhido, pela formula da norma, que vale para
+qualquer bitola (inclusive o filamento do Litz):
+
+   d_fio = 0.127 * 92^((36 - AWG)/39) / 10          [cm]
+   A_fio = pi * (d_fio/2)^2                         [cm^2]
+   R_fio = 1.72e-6 / A_fio                          [ohm/cm]  (cobre a 20 degC)
+
 A janela e o Ku:
 
    Scu_prim = Ipef / J ;  Scu_sec = Isef / J        [cm^2]
@@ -348,30 +376,71 @@ pre-treinada:
 
 Em qualquer caso, PnucleoSE = Ve_cm3 * nPv / 1000  [W].
 
-Ha ainda o Steinmetz generalizado (GSE), que so entra no detalhamento, nao na varredura.
-Ele calcula as perdas superior e inferior a partir da forma de onda real (6 segmentos
-para Vo > 480 V, 3 segmentos caso contrario):
+Essa conta (o PnucleoSE) hoje e so referencia. A perda de nucleo que vale, nos
+materiais com coeficientes de Steinmetz, e o Steinmetz generalizado (GSE) de Li (2001),
+calculado sobre a forma de onda real de B(t):
 
-   P_GSE = (V/T) * integral( k_i * |dB/dt|^alpha * |B|^(beta-alpha) dt )
-   k_i   = k / ( (2*pi)^(alpha-1) * integral_0^2pi |cos|^alpha |sin|^(beta-alpha) dtheta )
+   P_GSE = (Ve/T) * integral_0^T( k1 * |dB/dt|^alpha * |B|^(beta-alpha) dt )
+   k1    = k / ( (2*pi)^(alpha-1) * integral_0^2pi |cos|^alpha |sin|^(beta-alpha) dtheta )
 
-Fica desligado na varredura (gseEnabled=false) por causa do custo das integrais, e
-retorna NaN se Np <= 0 ou se (beta-alpha) <= -0.99, quando a integral divergiria.
+O k1 ja esta calculado no catalogo, na coluna k_iGSE da aba Steinmetz (o nome e
+historico; o valor e o k1 do GSE, conferido pelo teste [13]). A versao 1.0 usava o k
+cru no lugar do k1, o que superestimava a GSE de 2.8 a 3.3 vezes nas ferrites.
 
-A perda no cobre tambem itera (5 vezes), pela mesma razao termica do indutor:
+B(t) sai da lei de Faraday, dB/dt = v(t)/(Np*Ae), e e linear por trechos. Para
+Vo > 480 V (1/3 < D < 2/3) a tensao no primario tem 6 degraus (+-Vd/3, +-2Vd/3), com
+duracoes d1 = Ts*(3D-1)/3 e d2 = Ts*(2-3D)/3 alternadas. Para Vo <= 480 V (D <= 1/3) sao
+3 pulsos de duracao D*Ts que comecam em 0, Ts/3 e 2Ts/3, com tensao nula entre eles
+(fluxo parado, sem perda pela GSE). Em cada trecho B = a*t + b, com a = dB/dt e b o valor
+da reta em t = 0. Um ponto que pegou: como b e o intercepto em t = 0, cada trecho tem de
+ser integrado no seu intervalo de tempo real [t_inicio, t_fim]. O app2 integrava todos de
+0 a d_i, o que avalia |B| em valores errados (picos de ate 5*Bm) e superestimava a perda
+de 1.4 a 11 vezes, conforme o material. Corrigido, o B(t) fica continuo e oscila entre
+-Bm e +Bm, como manda o Faraday com k = 9.
 
-   Rp = Rcfio * Compfio_prim / Nfios_prim ;  Rs = Rcfio * Compfio_sec / Nfios_sec
-   Pcond = Rp*Ipef^2 + Rs*Isef^2
+Como B e linear em cada trecho, a integral tem forma fechada:
+
+   integral( |a*t + b|^c dt ) = [ sign(u)*|u|^(c+1)/(c+1) ] / a ,   u = a*t + b, c > -1
+
+que e o que o codigo usa (muito mais rapido que integral numerica). Se c = beta-alpha
+<= -0.99 a integral divergiria e a GSE devolve NaN.
+
+O conversor tem 6 transformadores, 3 na ponte superior (dd = 1-D) e 3 na inferior
+(dd = D). Com o intervalo de integracao certo, as duas formas de onda sao espelhadas uma
+da outra no tempo, e a GSE da a mesma perda para os dois grupos. A ferramenta calcula os
+dois mesmo assim (campos *Sup e *Inf), porque com outra modulacao eles podem diferir.
+
+Nas ferrites TDK (N27 a N97) nao ha coeficientes de Steinmetz no catalogo; a perda de
+nucleo dos dois grupos vem da rede neural, NN(fs, Bm, T), com T limitado a faixa de
+treino da rede (25 a 120 degC). Fora dessa faixa a rede extrapola e pode devolver perda
+quase nula.
+
+Perda de nucleo e temperatura dependem uma da outra (o fator c1 - c2*T + c3*T^2 e a rede
+neural usam a temperatura do nucleo), assim como a resistencia do cobre. A ferramenta
+resolve isso por iteracao de ponto fixo com sub-relaxacao de 0.5, ate a temperatura
+mudar menos de 0.01 degC (no maximo 60 passos; se nao convergir, o projeto e rejeitado
+como 'thermal_no_convergence'):
+
+   Pcore  = P_GSE(Tcore)        (ou NN(fs, Bm, Tcore) nas TDK)
+   Pcond  = Fr * (Rp20*Ipef^2 + Rs20*Isef^2) * (1 + 0.0038*(Tcore - 20))
    EE:        Sa = 2*(Leg*Len + H*Leg + H*Len)            [cm^2]
    Toroidal:  Sa = 2*pi*(OD/2)^2 + 2*pi*OD/4 * H
-   Ptrafo = Pcond + PnucleoSE
-   DeltaT = (1000 * Ptrafo / Sa)^0.833                     [degC]
-   Rcfio(T) = Rfio * (1 + 0.0038*(DeltaT + T - 20))        (atualizado a cada iteracao)
+   DeltaT = (1000 * (Pcore + Pcond) / Sa)^0.833           [degC]
+   Tcore  = T_amb + DeltaT
 
-E o fecho, volume e limites:
+O Fr e o fator de perda CA do enrolamento (campo "AC Winding Loss Factor (Fr)"):
+multiplica a perda CC para levar em conta efeito pelicular e de proximidade. Fr = 1 e
+sem correcao. Para Litz bem dimensionado ele fica perto de 1; o valor certo depende da
+geometria do enrolamento (Dowell, Sullivan), e a ferramenta nao calcula, so recebe.
 
-   Vcu     = Compfio_prim*Afio*Nfios_prim + Compfio_sec*Afio*Nfios_sec   [cm^3]
-   Vtotal  = Ve_cm3 + Vcu                                                [cm^3]
+Ptrafo e a perda de um transformador do grupo superior (nucleo + cobre) e PtrafoInf a do
+inferior. O volume:
+
+   EE:        Vtotal = Ve_cm3 + Vcu                                     [cm^3]
+   Toroidal:  d_p = 2*sqrt(Afio*Nfios_prim/pi) ; d_s = 2*sqrt(Afio*Nfios_sec/pi)
+              camadas = round((Np*d_p + Ns*d_s) / (pi*OD))
+              OD_ext = OD + camadas*(d_p + d_s) ; H_ext = H + camadas*(d_p + d_s)
+              Vtotal = pi*(OD_ext/2)^2 * H_ext                          [cm^3]
 
 com rejeicao se DeltaT > DeltaTmax, Ptrafo > Pnucleomax ou Vtotal > Vmax.
 
@@ -388,14 +457,19 @@ semicondutores, a unidade e um dissipador com seus Q dies (Devices per HS): a pe
 unidade e a do conjunto (Q vezes a de um die, o GroupLossW), o volume e o de um
 dissipador, e o multiplicador e o numero de grupos/bracos (4 bracos, por exemplo, dao um
 fator 4). Para os magneticos, a unidade e um projeto de nucleo e o multiplicador e a
-quantidade. Somando sobre as familias:
+quantidade. No transformador, a unidade carrega Ptrafo + PtrafoInf (um de cada
+grupo) com o volume de um transformador, e o multiplicador e o numero total de
+transformadores, metade em cada grupo. Somando sobre as familias:
 
-   P_loss_total = soma( mult_i * perda_unidade_i )
+   P_loss_total = soma( mult_i * perda_unidade_i )   (trafo: mult/2 * (Psup + Pinf))
    Volume_total = soma( mult_i * volume_unidade_i )
+
+Para o conversor de referencia os padroes da aba sao: MOSFET-I, MOSFET-II e diodo = 1
+(cada grupo de 6 dispositivos num dissipador so), indutor = 3 e transformador = 6.
 
 E as metricas:
 
-   eta       = (P_out - P_loss_total) / P_out * 100   [%]
+   eta       = P_out / (P_out + P_loss_total) * 100   [%]
    powerDens = P_out        / (Volume_total * 0.001)  [W/L]
    lossDens  = P_loss_total / (Volume_total * 0.001)  [W/L]
 
@@ -422,16 +496,13 @@ O conversor de referencia e um CC-CC isolado trifasico soft-switching, com fs = 
    Vin = 600 V, Vo = 920 V, Po = 10 kW, Io = 14.28 A
    Ld (indutor de comutacao) = 5 uH, n (Np/Ns) = 0.8333, L_filtro = 1 mH, Co = 100 uF
 
-No prototipo otimizado, o indutor de filtro usa um Magnetics MPP de mu = 147, com 52
-espiras, AWG16, Ku = 25.77% e cerca de 20 cm^3 (a tensao sobre o indutor e de uns 300 V,
-nao os 600/800 V do barramento, e a corrente media e de 14 A). O transformador usa um
-Magmattec MMT139, com Np = 35, Ns = 42, AWG38 Litz e cerca de 100 cm^3 (a corrente do
-primario e de uns 2.8 A = 1.67 kW / 600 V).
+No prototipo, cada um dos 3 indutores de filtro leva 4.76 A medios (14.28/3) com ripple
+de 1.5 A pico-a-pico; com Vd = 300 V isso da L = 1 mH. O transformador e o Magmattec
+MMT139T6325 (material 139), com Np = 35, Ns = 42, fio Litz AWG38, J = 320 A/cm^2 e
+corrente RMS de 8 A no primario.
 
-Esses numeros guiam os valores padrao das abas (a tensao do indutor em torno de 300 V, a
-corrente do primario do trafo perto de 5 A, e assim por diante) e explicam por que certos
-cenarios "rejeitavam tudo" no passado: com tensao ou corrente erradas, o L e o numero de
-espiras ficavam grandes demais e o Ku estourava o kumax.
+Esses numeros sao os valores padrao das abas de indutor e transformador, para a
+interface ja abrir no caso do prototipo.
 
 
 9. Resumo das correcoes teoricas
@@ -444,12 +515,24 @@ espiras ficavam grandes demais e o Ku estourava o kumax.
    (Magnetics_CurveFit) - antes todos usavam o MPP mu40 fixo.
 4. Steinmetz do trafo na ordem certa: k = col1, alpha = col2, beta = col3 (a troca
    anterior gerava perdas de 1e16 e rejeitava todo transformador).
-5. Rendimento de volta a forma da aba power-density do app2, eta = (Pout - perdas)/Pout,
-   com eixo X = eficiencia e Y = densidade (a orientacao do original).
+5. Rendimento eta = Pout/(Pout + perdas), com eixo X = eficiencia e Y = densidade (a
+   orientacao do original).
 6. Densidade com a vista padrao "Loss / Vol" reproduzindo o original (Y = Loss/Vol) e a
    alternativa "P_out / Vol" mostrando a densidade de potencia (Y = Pout/Vol).
 7. Dissipador com a cadeia termica e o fit de comprimento fieis ao original
    (DIODESapp.m), e volume = (L/10)(H/10)(W/10).
+8. Versao 1.1 (outubro de 2026):
+   - indutor: roll-off sem a dupla multiplicacao por 100; Bpk como meia excursao do
+     fluxo; ripple em A, o mesmo no L, na corrente RMS e no fluxo; resistencia do cobre
+     na temperatura T_amb + DeltaT;
+   - transformador: perda total pela GSE (antes somava o Steinmetz classico), com k1 no
+     lugar do k; cada trecho de B(t) integrado no seu intervalo real; integral em forma
+     fechada; perda de nucleo e de cobre acopladas a temperatura com iteracao
+     convergente; fator Fr; rede neural das TDK de volta (estava com perda de nucleo
+     zero) e limitada a faixa de treino; volume do toroide com as camadas do enrolamento;
+   - densidade: rendimento Pout/(Pout + perdas); multiplicadores em todas as familias,
+     com o transformador contado como metade superior e metade inferior; o filtro de
+     cada aba passa a valer na combinacao.
 
 
 10. Todas as equacoes num lugar so (referencia rapida)
@@ -482,10 +565,11 @@ Indutor:
    ILef  = ILmed*sqrt(1 + (DeltaIL/ILmed)^2/12)                   [A]
    AL0   = mu_rel*mu0*(Ae/le)                                   [H/esp^2]
    N     = ceil(sqrt(L/AL))          (AL = AL0*mu%/100)         <- espiras
-   mu%   = 1/(a + b*H^c)*100   (roll-off; H = 4*pi*(N/le)*ILmed) [Oe]
-   Bpk   = L*I/(N*Ae)                                             [T]
+   mu%   = 1/(a + b*H^c)       (roll-off; H = 4*pi*(N/le)*ILmed) [Oe]
+   Bpk   = L*DeltaIL/(2*N*Ae)                                     [T]
    Pv    = P_a * Bpk^P_b * (fs/1000)^P_c          [mW/cm^3]  (Steinmetz/material)
    Pcore = Pv*1e-3 * Vol_nucleo                                   [W]
+   R_awg = r_awg*(1 + 0.00393*(T_amb + DeltaT - 20))              [ohm/m]
    Pcu   = (N*CEM*R_awg/Nparal) * ILef^2                          [W]
    DeltaT = (1e5*(Pcore+Pcu)/Sa)^0.833                            [degC]
 
@@ -496,15 +580,17 @@ Transformador:
    (forma geral N = V/(k*f*B*Ae); k = 4.44 senoidal, 4 quadrada, 9 deste conversor;
     o usuario informa k, padrao 9)
    Ku  = Area_nec / (Ap/Ae)                                       [-]
-   Pv  = k*fs^alpha*Bm^beta*(c1 - c2*T + c3*T^2)/1000   [mW/cm^3] (Steinmetz)
-         (TDK N..: Pv vem da rede neural NN(fs,Bm,T))
-   Pcore = Ve * Pv/1000                                           [W]
-   Pcond = Rp*Ipef^2 + Rs*Isef^2                                  [W]
-   DeltaT = (1000*(Pcore+Pcond)/Sa)^0.833                         [degC]
+   P_GSE = (Ve/T)*soma_trechos( k1*|a|^alpha * integral |a*t+b|^(beta-alpha) dt )
+           * (c1 - c2*Tcore + c3*Tcore^2)                          [W]
+         (TDK N..: Pcore = Ve*NN(fs,Bm,Tcore)/1000)
+   Pcond = Fr*(Rp20*Ipef^2 + Rs20*Isef^2)*(1 + 0.0038*(Tcore - 20)) [W]
+   DeltaT = (1000*(Pcore+Pcond)/Sa)^0.833 ;  Tcore = T_amb + DeltaT  [degC]
+   Ptrafo (sup) e PtrafoInf (inf) = Pcore + Pcond de cada grupo     [W]
 
 Densidade de potencia (combinacao):
    P_loss_total = soma( mult_i * perda_unidade_i )                [W]
+                  (trafo: mult/2 * (Ptrafo + PtrafoInf))
    Volume_total = soma( mult_i * volume_unidade_i )               [cm^3]
-   eta       = (P_out - P_loss_total)/P_out * 100                 [%]
+   eta       = P_out/(P_out + P_loss_total) * 100                 [%]
    powerDens = P_out        / (Volume_total*0.001)                [W/L]
    lossDens  = P_loss_total / (Volume_total*0.001)                [W/L]

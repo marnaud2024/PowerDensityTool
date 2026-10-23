@@ -8,8 +8,8 @@ para outra, como a interface e montada, as armadilhas que a gente ja levou, e
 como estender e compilar. A ideia e que qualquer pessoa consiga ler, manter ou
 evoluir o projeto sem precisar adivinhar nada.
 
-O ambiente e MATLAB, com App Designer feito na mao (sem .mlapp). Foi testado com
-o MATLAB em C:\Program Files\MATLAB\bin\matlab.exe.
+O ambiente e MATLAB, com App Designer feito na mao (sem .mlapp). Foi testado no
+MATLAB R2023b, no Windows.
 
 
 1. Estrutura de pastas
@@ -28,7 +28,7 @@ PowerDensityTool/
     build_installer.m            gera o instalador num comando so
     pdpwr_demo.m                 smoke test rapido
     +test/
-      regression.m               a bateria de regressao (12 testes-ancora)
+      regression.m               a bateria de regressao (16 testes)
     +pdpwr/
       density.m                  combinacao 5-D + metricas (eficiencia/densidade)
       +util/
@@ -69,7 +69,6 @@ PowerDensityTool/
   reference/                     as planilhas-fonte dos coeficientes (Curve-Fit e
                                  Full-Data Steinmetz), de onde sairam as abas
                                  Magnetics_CurveFit e Steinmetz do Catalog.xlsx
-  PowerDensityApp.prj            projeto do deploytool (opcional, especifico da maquina)
 
 Uma coisa dos namespaces do MATLAB: pastas que comecam com '+' sao pacotes. Uma
 funcao em src/+pdpwr/+loss/mosfet.m e chamada como pdpwr.loss.mosfet(...). A pasta
@@ -132,18 +131,24 @@ Cores_Magnetics  (formato longo: uma linha por nucleo + permeabilidade)
 
 Magnetics_CurveFit  (coeficientes por material + permeabilidade, do Curve-Fit-Equation-Tool)
    Material, Permeability,
-   mi_a, mi_b, mi_c   (roll-off de permeabilidade: mu% = 1/(a + b*H^c)*100)
+   mi_a, mi_b, mi_c   (roll-off de permeabilidade: mu% = 1/(a + b*H^c); com a = 0.01
+                       a formula ja sai em %, 100 em H = 0)
    P_a, P_b, P_c      (core-loss de Steinmetz: Pv = P_a * B^P_b * f_kHz^P_c [mW/cc])
 
 Cores_Trafos  (a ALL-MODELS normalizada: uma linha por nucleo + material)
    Material ('R','P','F','T','N27'..'N97','139'), PartNumber, AL, Le, Ae_mm2,
    Ve_mm3, WaAc_cm4, OD_mm, ID_mm, Height_mm, Length_mm, LegLength_mm,
    Manufacturer, Geometry ('R'|'EE')
+   O PartNumber mistura numero (907) e texto (MMT139T6325); o load_catalog le essa
+   coluna como texto, senao os nomes Magmattec viram NaN. Algumas linhas TDK tem
+   numeros gravados como texto com virgula decimal ('42,10'); o readtable le essas
+   celulas como NaN e o projeto e descartado. Vale corrigir essas linhas na planilha.
 
 Steinmetz  (coeficientes de perda de nucleo do trafo, 13 materiais)
    MaterialID, Material, alpha, beta, k, c1_T, c2_T, c3_T, k_iGSE
    A ordem certa, vinda do coefficients.xlsx original, e col1=k, col2=alpha,
-   col3=beta. Os materiais TDK (N27 a N97) ficam zerados aqui, porque usam a rede
+   col3=beta. O k_iGSE e o coeficiente k1 do GSE de Li (2001), calculado de k, alpha e
+   beta (o teste [13] confere); e ele, e nao o k, que entra na GSE. Os materiais TDK (N27 a N97) ficam zerados aqui, porque usam a rede
    neural, e o '139' usa os coeficientes 'magmattec' da linha 13. A coluna Material
    e texto de proposito - o '139' como numero quebrava o strcmp.
 
@@ -160,9 +165,12 @@ op  (condicoes de operacao do semicondutor - entrada do +loss):
 D  (o struct de projeto do magnetico - entrada do +design):
    Indutor: .Vd .ILmed .DeltaIL .ILef .L .IL_max .J .fs .r_awg .Aawg .Dextawg
             .temp_ambiente .DeltaTmax .kumin .kumax .MaxLoss .MaxVol
+            (DeltaIL e o ripple pico-a-pico em A; a aba faz IL_max = DeltaIL, e o mesmo
+            valor entra no L, na ILef e na excursao de fluxo)
    Trafo  : .Vd .Vo .n .Ipef .Isef .fs .Ts .T .D .D2 .Rfio .Afio .Dfio .Rcfio
             .kumin .kumax .DeltaTmax .Bm .J .Pnucleomax .Vmax
             .kFaraday  (a constante de Faraday em Np=Vd*1e4/(k*Bm*fs*Ae); campo do usuario, padrao 9)
+            .Fr        (fator de perda CA do enrolamento; multiplica a perda CC; padrao 1)
 
 core  (o struct do nucleo - entrada do +design):
    Indutor: .id .mi_rel .le_mm .Ae_mm2 .Vol_mm3 .OD_mm .ID_mm .HT_mm .stacks
@@ -181,14 +189,24 @@ hsAll  (o struct array dispositivo + dissipador, publicado para a densidade):
    .DevicesPerHS (Q)  .GroupLossW (= PowerW * Q, a perda do conjunto no dissipador)
 
 proj  (saida do +design.inductor/transformer - um projeto):
-   Indutor: .ID .mi .Ptotal .Pcore .Pcu .Vol .Ku .N .Nparal .DeltaT .Bp .fs ...
-            (.N = NaN e .reason preenchido quando o projeto e rejeitado)
-   Trafo  : .Material .Size .Geometry .ParallelCores .Np .Ns .PnucleoSE .Pcond
-            .Ptrafo .DeltaT .VolTotal .Ku .Bm ...  (.Np = NaN quando rejeitado)
+   Indutor: .ID .mi .Ptotal .Pcore .Pcu .Vol .Ku .N .Nparal .DeltaT .Bpk .L
+            .DeltaIL .fs .Tfinal ...  (.N = NaN e .reason preenchido quando rejeitado)
+   Trafo  : .Material .Size .Geometry .ParallelCores .Np .Ns .NfiosPrim .NfiosSec
+            .PnucleoSE (so referencia) .PnucleoGSEsup .PnucleoGSEinf
+            .PcondSup .PcondInf .Ptrafo (grupo superior) .PtrafoInf (inferior)
+            .DeltaT .Tcore .VolTotal .Ku .Bm .J .Fr  (.Np = NaN e .reason quando rejeitado)
 
 comp  (entrada do pdpwr.density): um struct com .mosfetI .mosfetII .diode .inductor
    .transformer (cada um uma tabela Identifier/PowerW/Volume_cm3) e
-   .<familia>_mult (o multiplicador = numero de unidades/bracos).
+   .<familia>_mult (o multiplicador = numero de unidades). No trafo, PowerW = Ptrafo +
+   PtrafoInf e o multiplicador e o numero de transformadores (metade em cada grupo).
+
+O cache de cada aba (app.Results.<nome>):
+   MOSFET/Diodo: .records .hsAll .filteredHsAll
+   Indutor/Trafo: .records .filteredRecords
+O Calculate preenche os dois campos com o conjunto completo; o Filter / Plot troca so o
+filtered*. A aba Power Density usa o filtered* quando existe, entao o que e desmarcado
+numa aba nao entra na combinacao.
 
 res  (saida do pdpwr.density):
    .eff .powerDens .loss .lossDens .vol .idx .detail (.M1/.M2/.D/.L/.T) .metric
@@ -242,7 +260,8 @@ projeto de cada nucleo (i_bestPerCore).
 Na aba Power Density, o eixo X e a eficiencia e o Y e a densidade (a orientacao do
 app2 original, rerotulada por i_apply_mode). A vista padrao "Loss / Vol" poe Loss/Vol
 no Y e reproduz o original; a "P_out / Vol" poe Pout/Vol. A eficiencia e
-(P_out - perdas)/P_out. O datatip do grafico mostra so o "Combo #" (o numero da linha)
+P_out/(P_out + perdas). Os multiplicadores padrao sao os do conversor de referencia:
+1, 1, 1, 3 e 6 (MOSFET-I, MOSFET-II, diodo, indutor, trafo), com P_out = 10 kW. O datatip do grafico mostra so o "Combo #" (o numero da linha)
 e as 4 metricas; a tabela e que traz a coluna "#" e, em cada celula de componente,
 todos os detalhes construtivos (o i_identifier rico: produtor, encapsulamento,
 dissipador com perfil, comprimento, Rth e ventilacao, Np/Ns/Bm/Ku/dT, mu/N/Nparal,
@@ -265,10 +284,11 @@ dropdown "Combinations" (ctx.comboDropdown) tem "Spread" (10 espalhados por fami
     UI desta versao. Nao use isvalid em componentes; ponha close(pd), .Enable, .Value
     e .Message dentro de try/catch.
 
-#3  O GSE do trafo tem integrais lentas e enche o Command Window de warnings de
-    singularidade, o que trava tudo. Por isso ele so roda no detalhamento
-    (gseEnabled=false na varredura); suprima os warnings 'MATLAB:integral:MinStepSize'
-    e ':NonFiniteValue' e envolva em try/catch.
+#3  O GSE do trafo com integral() numerica era lento (uns 6 minutos na varredura
+    completa) e enchia o Command Window de warnings de singularidade. Como B(t) e
+    linear em cada trecho, a integral de |a*t+b|^c tem forma fechada
+    (i_segIntegral), e a varredura caiu para uns 15 s. Os warnings continuam
+    suprimidos no tab_transformer por seguranca.
 
 #4  A explosao combinatoria trava a UI no final (a uitable e o scatter congelam com
     30 mil pontos ou mais). No indutor e no trafo, a gente mostra so o melhor projeto
@@ -305,6 +325,19 @@ dropdown "Combinations" (ctx.comboDropdown) tem "Spread" (10 espalhados por fami
     handle 'Visible' value must be 'on'" - o catalogo nao carrega e o uialert acaba
     falhando numa figura invisivel.
 
+#11 Nos trechos da GSE, B = a*t + b com b sendo o valor da reta em t = 0 (intercepto
+    no inicio do periodo), nao no inicio do trecho. Cada trecho tem de ser integrado no
+    seu intervalo real [t_inicio, t_fim]. Integrar de 0 a d_i (como fazia o app2)
+    avalia |B| em valores errados e superestima a perda. O teste [14] confere a GSE
+    contra uma integracao independente do B(t) montado pelo Faraday.
+
+#12 No trafo, perda de nucleo e temperatura dependem uma da outra. Iteracao de ponto
+    fixo sem sub-relaxacao oscila; com numero fixo de passos o projeto pode terminar
+    num estado falso (nas TDK, a temperatura passava de 120 degC, a rede neural
+    extrapolava para perda quase nula e o projeto parecia otimo). Hoje o laco usa
+    relaxacao 0.5, para quando a temperatura muda menos de 0.01 degC e rejeita o que
+    nao converge; a entrada de temperatura da rede fica presa a faixa de treino.
+
 
 7. Como estender
 ----------------
@@ -327,14 +360,16 @@ limits, step). O loop de construcao cria o uispinner sozinho.
 
 8. Validacao e testes
 ---------------------
-A bateria de regressao (auto-contida, 12 testes):
+A bateria de regressao (auto-contida, 16 testes):
    cd src
    matlab -batch "test.regression"
 Espera-se "=== Total failures: 0 ===". Ela cobre a carga do catalogo, a tabela AWG, o
 Eon dos GeneSiC e Wolfspeed, o Pcond do diodo, o dispatch por material do Magmattec, o
 Bpk com le, o mapeamento k/alpha do Steinmetz, a diferenciacao do curve-fit por
-material, a combinacao de densidade, a cadeia termica do dissipador e a constante de
-Faraday.
+material, a combinacao de densidade com os multiplicadores, a cadeia termica do
+dissipador, a constante de Faraday, o k1 da GSE contra a definicao de Li (2001), a GSE
+do trafo contra uma integracao independente, a perda de nucleo das TDK e, no indutor, o
+Bpk e a temperatura do cobre.
 
 Para pegar erros de montagem da interface sem abrir a janela:
    cd src
