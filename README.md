@@ -6,8 +6,7 @@ seus dissipadores, indutores de filtro e transformadores de alta frequência, e 
 combina os projetos viáveis de cada família num mapa de rendimento contra densidade.
 
 Foi desenvolvida no GPEC/UFC e validada num conversor CC-CC isolado trifásico de 10 kW
-com comutação suave. A teoria, com a dedução das equações, está em
-[`docs/teoria/teoria_densidade.pdf`](docs/teoria/teoria_densidade.pdf).
+com comutação suave. As equações estão descritas em [`docs/THEORY.txt`](docs/THEORY.txt).
 
 ## Como rodar
 
@@ -78,7 +77,7 @@ src/
     +util/               catálogo, modelos PLECS, rede neural, caminhos, exportação
     +ui/                 uma função por aba
 data/                    Catalog.xlsx, modelos PLECS e pesos da rede neural
-docs/                    teoria (LaTeX e PDF), THEORY.txt, DEVELOPER_GUIDE.txt
+docs/                    THEORY.txt (teoria) e DEVELOPER_GUIDE.txt (código)
 reference/               planilhas de onde saíram os coeficientes do catálogo
 assets/                  logos
 build/                   instruções do instalador
@@ -95,11 +94,11 @@ cd src
 test.regression          % espera "Total failures: 0"
 ```
 
-São 16 testes. Além da leitura do catálogo e de valores calculados à mão para MOSFET,
+São 17 testes. Além da leitura do catálogo e de valores calculados à mão para MOSFET,
 diodo, dissipador e combinação, eles conferem o coeficiente k1 da GSE contra a definição
 de Li (2001), a GSE do transformador contra uma integração independente do fluxo
 montado pela lei de Faraday, a perda de núcleo das ferrites TDK e, no indutor, o Bpk e a
-temperatura do cobre.
+temperatura do cobre. O último confere a leitura dos núcleos de transformador do catálogo.
 
 ## Instalador
 
