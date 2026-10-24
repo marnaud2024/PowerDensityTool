@@ -60,6 +60,7 @@ function proj = transformer(D, core, mat, opts)
     kFar = 9;
     if isfield(D, 'kFaraday') && D.kFaraday > 0, kFar = D.kFaraday; end
     Np = round((D.Vd * 1e4) / (kFar * D.Bm * D.fs * core.Ae_cm2));
+    if ~isfinite(Np), proj = i_reject('geometry_incomplete'); return; end
     if Np <= 0, proj = i_reject('Np<=0'); return; end
     Ns = ceil(Np * D.n);
 
@@ -83,6 +84,10 @@ function proj = transformer(D, core, mat, opts)
                   + core.H_cm*core.Length_cm);
     else
         Sa = 2*pi*(core.OD_cm/2)^2 + 2*pi*core.OD_cm/4 * core.H_cm;
+    end
+    if ~isfinite(Sa) || ~isfinite(core.Ve_cm3)
+        % Missing dimensions in the catalog (e.g. PQ cores without LegLength)
+        proj = i_reject('geometry_incomplete'); return
     end
 
     % --- dc winding resistances at 20 degC

@@ -33,9 +33,18 @@ function catalog = load_catalog(catalogPath)
     catalog.magnetics = readtable(catalogPath, 'Sheet', 'Cores_Magnetics');
     % PartNumber mixes numbers (Magnetics 907) and text (MMT139T6325); read it
     % as text so the Magmattec part numbers are not lost as NaN.
+    % Some TDK rows store dimensions as text with a decimal comma ('42,10');
+    % read the geometry columns as text and convert, otherwise those cores
+    % come out as NaN and are silently skipped.
     optsT = detectImportOptions(catalogPath, 'Sheet', 'Cores_Trafos');
     optsT = setvartype(optsT, 'PartNumber', 'string');
+    geoCols = intersect({'AL_nHesp2','Le_mm','Ae_mm2','Ve_mm3','WaAc_cm4','OD_mm', ...
+                         'ID_mm','Height_mm','Length_mm','LegLength_mm'}, optsT.VariableNames);
+    optsT = setvartype(optsT, geoCols, 'string');
     catalog.trafos    = readtable(catalogPath, optsT);
+    for k = 1:numel(geoCols)
+        catalog.trafos.(geoCols{k}) = str2double(strrep(catalog.trafos.(geoCols{k}), ',', '.'));
+    end
     catalog.steinmetz = readtable(catalogPath, 'Sheet', 'Steinmetz');
     catalog.awg       = readtable(catalogPath, 'Sheet', 'AWG_Table');
     % Per-material, per-permeability curve-fit coefficients (Magnetics):

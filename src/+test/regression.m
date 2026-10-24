@@ -429,6 +429,27 @@ function regression()
         fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
     end
 
+    % -------- TEST 17: transformer core geometry read from the catalog --------
+    %
+    %   Part numbers come as text (MMT139T6325 must not turn into NaN) and the
+    %   TDK rows written with a decimal comma ('42,10') must be converted.
+    fprintf('\n[17] transformer catalog: part numbers and decimal commas\n');
+    try
+        Tt = cat.trafos;
+        nNaN = nnz(isnan(Tt.Ae_mm2)) + nnz(isnan(Tt.Ve_mm3));
+        hasMMT = any(Tt.PartNumber == "MMT139T6325");
+        iPQ = find(Tt.PartNumber == "PQ16/11.6", 1);
+        okPQ = ~isempty(iPQ) && i_close(Tt.Ae_mm2(iPQ), 42.1, tolRel, tolAbs);
+        if nNaN == 0 && hasMMT && okPQ
+            fprintf('    PASS  no NaN in Ae/Ve, MMT139T6325 found, PQ16/11.6 Ae = %.1f mm^2\n', Tt.Ae_mm2(iPQ));
+        else
+            fprintf('    FAIL  NaN in Ae/Ve: %d, MMT139T6325 found: %d, PQ16 ok: %d\n', nNaN, hasMMT, okPQ);
+            failures = failures + 1;
+        end
+    catch ME
+        fprintf('    FAIL  %s\n', ME.message); failures = failures + 1;
+    end
+
     fprintf('\n=== Total failures: %d ===\n', failures);
 end
 

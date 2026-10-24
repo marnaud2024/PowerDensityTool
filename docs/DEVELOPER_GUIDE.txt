@@ -28,7 +28,7 @@ PowerDensityTool/
     build_installer.m            gera o instalador num comando so
     pdpwr_demo.m                 smoke test rapido
     +test/
-      regression.m               a bateria de regressao (16 testes)
+      regression.m               a bateria de regressao (17 testes)
     +pdpwr/
       density.m                  combinacao 5-D + metricas (eficiencia/densidade)
       +util/
@@ -63,7 +63,6 @@ PowerDensityTool/
                                  pelo build_installer e publicado nos Releases)
     READ_ME_FIRST.txt            instrucoes de instalacao
   docs/
-    teoria/                      o relatorio LaTeX da teoria (fonte + PDF)
     THEORY.txt                   a teoria em texto corrido
     DEVELOPER_GUIDE.txt          este guia
   reference/                     as planilhas-fonte dos coeficientes (Curve-Fit e
@@ -140,9 +139,11 @@ Cores_Trafos  (a ALL-MODELS normalizada: uma linha por nucleo + material)
    Ve_mm3, WaAc_cm4, OD_mm, ID_mm, Height_mm, Length_mm, LegLength_mm,
    Manufacturer, Geometry ('R'|'EE')
    O PartNumber mistura numero (907) e texto (MMT139T6325); o load_catalog le essa
-   coluna como texto, senao os nomes Magmattec viram NaN. Algumas linhas TDK tem
-   numeros gravados como texto com virgula decimal ('42,10'); o readtable le essas
-   celulas como NaN e o projeto e descartado. Vale corrigir essas linhas na planilha.
+   coluna como texto, senao os nomes Magmattec viram NaN. Nas 45 linhas dos nucleos
+   TDK PQ as dimensoes estao gravadas como texto com virgula decimal ('42,10'); o
+   load_catalog le as colunas de geometria como texto e converte. Essas mesmas linhas
+   nao tem LegLength_mm, entao a area de dissipacao nao sai e o projeto e rejeitado
+   como 'geometry_incomplete' ate a planilha ser completada.
 
 Steinmetz  (coeficientes de perda de nucleo do trafo, 13 materiais)
    MaterialID, Material, alpha, beta, k, c1_T, c2_T, c3_T, k_iGSE
@@ -360,7 +361,7 @@ limits, step). O loop de construcao cria o uispinner sozinho.
 
 8. Validacao e testes
 ---------------------
-A bateria de regressao (auto-contida, 16 testes):
+A bateria de regressao (auto-contida, 17 testes):
    cd src
    matlab -batch "test.regression"
 Espera-se "=== Total failures: 0 ===". Ela cobre a carga do catalogo, a tabela AWG, o
@@ -369,7 +370,7 @@ Bpk com le, o mapeamento k/alpha do Steinmetz, a diferenciacao do curve-fit por
 material, a combinacao de densidade com os multiplicadores, a cadeia termica do
 dissipador, a constante de Faraday, o k1 da GSE contra a definicao de Li (2001), a GSE
 do trafo contra uma integracao independente, a perda de nucleo das TDK e, no indutor, o
-Bpk e a temperatura do cobre.
+Bpk e a temperatura do cobre, e a leitura dos nucleos de trafo do catalogo.
 
 Para pegar erros de montagem da interface sem abrir a janela:
    cd src
